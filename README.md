@@ -12,6 +12,6 @@ Users log into [TechLife Portal](https://techlife-app.streamlit.app), then click
 4. Main file: `app.py`
 5. Paste Secrets from `secrets.example.toml` (JWT + Supabase must match the portal; AI keys live only here)
 
-Default public URL after deploy: `https://innovation-analysis-saas.streamlit.app`
+Public URL: `https://innovation-analysis.streamlit.app`
 
 If Streamlit assigns a different URL, set `INNOVATION_APP_URL` in the portal Cloud secrets.

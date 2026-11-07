@@ -24,6 +24,13 @@ from voc_web_search import (
     search_all_markets,
     search_patents_and_competitors,
 )
+from portal_enterprise_ui import (
+    ensure_enterprise_session_defaults,
+    is_enterprise_user,
+    load_enterprise_branding,
+    render_enterprise_main_brand,
+    render_enterprise_sidebar_brand,
+)
 
 ICON_COLOR = "#8EC8E8"
 PORTAL_HOME_URL = "https://techlife-app.streamlit.app"
@@ -92,6 +99,24 @@ def _ai_config() -> Tuple[str, str, str]:
     base_url = _secret("AI_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
     model = _secret("AI_MODEL_NAME", "DEEPSEEK_MODEL", default="deepseek-chat")
     return api_key, base_url, model
+
+
+def get_remaining_trials(user_id: str) -> int:
+    if is_enterprise_user():
+        return -1
+    url, headers = _supabase_config()
+    if not url or not headers.get("apikey") or not user_id:
+        return int(st.session_state.get("trials_left", 30) or 30)
+    try:
+        resp = requests.get(f"{url}/rest/v1/profiles?id=eq.{user_id}", headers=headers, timeout=20)
+        if resp.status_code == 200 and resp.json():
+            row = resp.json()[0]
+            if row.get("organization_id") or row.get("subscription_tier") == "pro":
+                return -1
+            return int(row.get("free_trials_remaining", 30) or 0)
+    except Exception:
+        pass
+    return int(st.session_state.get("trials_left", 30) or 30)
 
 
 def consume_trial(user_id: str, app_name: str = "innovation") -> Tuple[bool, int, str]:
@@ -302,32 +327,33 @@ REPORT_PROMPT_ZH = """
 Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技术+专利空白+竞品（格式借鉴产品可行性报告的竞品与技术可行性章节）。
 
 硬性规则：
-1. 禁止编造 URL、专利号、竞品型号、条数。只能引用 VOC_BLOCK / SEARCH_BLOCK / TECH_BLOCK 中的条目。
-2. 用户在输入框填写的「痛点」和「技术创新」必须全部出现在报告中并打分，一条都不能丢。痛点走 Desirability（P）；技术创新走 Feasibility（专利/竞品/T分）。产品简要描述作为补充背景。
-3. 痛点优先级 P=0.3F+0.3S+0.2U+0.2W。创新机会表：Top {top_n} + 所有 P≥{pain_threshold}。
-4. Viability 分 V：在有证据时用 0.4×付费意愿W + 0.3×可触达/渠道匹配 + 0.3×单位经济（溢价或替代成本）；缺证据写未知。
-5. Feasibility 分 T：0.4×技术就绪（对照用户技术经验与预算）+ 0.3×IP空白（专利未覆盖或可规避）+ 0.3×与竞品差异可实现性。
-6. 竞品分析按每个目标市场至少 3 个，表格列品牌、型号/系列、优势、劣势、定价区间；再做功能对比与市场空白（可行性报告 2.1–2.3 格式）。
-7. 表格不得空；假设标明待验证。不要输出标题和基本信息表，从「三支柱总览」开始。
+1. 禁止编造 URL、专利号、竞品型号、条数。只能引用 SEARCH_BLOCK / TECH_BLOCK 中的条目。VOC 证据必须来自网页检索，用户没有粘贴 VOC。
+2. 用户填写的「痛点」和「技术创新」是假设/声称，不是结论。必须全部列出，并用检索结果判定：印证 / 部分印证 / 未印证 / 反证。未印证的假设不得抬高 D 或 T。
+3. 痛点优先级 P=0.3F+0.3S+0.2U+0.2W。仅对「印证/部分印证」或「检索新发现」的痛点计算可入选的 P。创新机会表：Top {top_n} + 所有 P≥{pain_threshold}。
+4. Viability 分 V：有证据时 V=0.4×W + 0.3×可触达/渠道 + 0.3×单位经济；缺证据写未知。
+5. Feasibility 分 T：T=0.4×技术就绪 + 0.3×IP空白 + 0.3×与竞品可差异化。用户声称的技术若专利/竞品已占，T 必须下调。
+6. 创新指数 I=0.4×D + 0.3×V + 0.3×T（D/V/T 各 1–10）。三支柱都高才建议投入。
+7. 竞品分析每市场至少 3 个。表格不得空。不要输出标题和基本信息表，从「量化总览」开始。
 
-## 三支柱总览
-用表格：支柱、1-10分、一句话结论、主要证据、最大缺口。三行分别为 Desirability / Viability / Feasibility。
+## 量化总览
+先给创新指数 I 和三支柱表：支柱、1-10分、一句话、主要检索证据、最大缺口。并写清 I 的计算。
+再给「假设核对表」：用户痛点假设、用户技术声称、检索判定、对 D/T 的影响。
 
 ---
 
 # 支柱一　Desirability（用户想要吗 · 痛点）
 
-## D1 用户输入痛点打分（必须覆盖全部用户痛点）
-用户填写的痛点如下，必须逐条成表，不得合并丢掉：
+## D1 用户痛点假设核对（必须覆盖全部用户填写项）
+用户认为的痛点如下（假设，待检索证明）：
 {user_pains}
-列：用户原话、VOC是否印证、F、S、U、W、P、是否≥阈值 {pain_threshold}、证据等级、n、引用。无 VOC 则 P 可为不可计算，但仍保留该行。
+列：用户原话、检索判定（印证/部分印证/未印证/反证）、F、S、U、W、P、是否≥阈值 {pain_threshold}、证据等级、n、引用。未印证则 P 不可用于抬高 D，仍保留该行。
 
 ## D1b 产品描述补充主张
 产品简要描述：{product_description}
 仅补充用户痛点框未覆盖的主张。
 
-## D2 证据盘点与分市场 VOC
-每市场：信息渠道、中文检索、英文检索、YouTuber/测评/评论、该市场痛点。最后跨市场汇总。粘贴 {voc_n} 条，网页 VOC {search_n} 条。
+## D2 检索获得的 VOC（唯一证据来源）
+每市场：信息渠道、中文检索、英文检索、YouTuber/测评/评论、该市场痛点。跨市场汇总。网页 VOC {search_n} 条。必须区分：印证了用户假设的、以及用户没写但检索发现的新痛点。
 
 ## D3 信息获取渠道（尽量列全）
 每市场一张表。必须覆盖 CHANNEL_GUIDE。
@@ -336,7 +362,7 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 ## D4 JTBD 场景（按市场）
 
 ## D5 痛点清单与 P 分
-用户输入痛点必须全部进入此表并打分，然后再补充检索发现的其他痛点。来源列标明「用户输入」或「检索发现」。
+先列用户假设及判定，再列检索新发现。来源列：用户假设-已印证 / 用户假设-未印证 / 检索发现。
 
 ## D6 创新机会表（Desirability 输出）
 Top {top_n} + P≥{pain_threshold}。列：排名、机会、痛点、P、是否过阈值、创新方向、CTQ线索、市场。
@@ -363,11 +389,11 @@ Top {top_n} + P≥{pain_threshold}。列：排名、机会、痛点、P、是否
 
 # 支柱三　Feasibility（技术能不能做成 · 专利与竞品）
 
-## F1 用户输入技术创新打分（必须覆盖全部）
-用户填写的技术创新如下，必须逐条成表：
+## F1 用户技术创新声称核对（必须覆盖全部）
+用户认为的技术创新如下（声称，待专利/竞品检索证明）：
 {user_tech_innovations}
-列：用户原话、专利检索结果（仅 TECH_BLOCK URL）、与本方案关系（阻挡/可规避/空白）、竞品是否已做、技术就绪、IP空白、可差异化、T分、风险。
-未检索到写「本次未找到公开专利，空白待专业 FTO」，禁止编公开号。产品描述里多出来的技术点可作补充行。
+列：用户原话、检索判定（空白/可规避/竞品已做/专利阻挡）、专利检索结果（仅 TECH_BLOCK URL）、技术就绪、IP空白、可差异化、T贡献、风险。
+未检索到写「本次未找到公开专利，空白待专业 FTO」，禁止编公开号。
 
 ## F2 关键技术要求（借鉴可行性 4.1）
 列：技术项、对应痛点、量化指标、客户能力（{tech_experience}）、预算匹配（{estimated_budget}）、风险。
@@ -386,10 +412,11 @@ T 分及理由：技术就绪、IP 空白、与竞品差异、资源匹配。
 
 ---
 
-# 综合建议（三支柱合成）
-### C1 对照表：Desirability / Viability / Feasibility 分数与能否进入开发
-### C2 差异化定位 2–3 个选项
-### C3 下一步 5 条：必须含 VOC 验证、专利 FTO/查新、竞品拆机或购买、渠道/定价实验
+# 综合建议（量化合成）
+### C1 创新指数 I=0.4D+0.3V+0.3T，以及能否进入开发
+### C2 哪些用户假设被证明、哪些被证伪
+### C3 差异化定位 2–3 个选项
+### C4 下一步 5 条：含 VOC 实地验证、专利 FTO、竞品拆机、渠道/定价实验
 
 输入其他：{additional_info}
 
@@ -407,29 +434,31 @@ Organize the report around the three pillars of innovation: **Desirability / Via
 Desirability = pain points and VOC. Viability = commercial value of the innovation. Feasibility = technology + patent white space + competitors (borrow Product Feasibility report format for competitor and technical sections).
 
 Hard rules:
-1. Never invent URLs, patent numbers, competitor SKUs, or counts. Cite only VOC_BLOCK / SEARCH_BLOCK / TECH_BLOCK.
-2. Every user-entered pain point and technical innovation MUST appear in the report and be scored. Pains → Desirability (P). Tech innovations → Feasibility (patents/competitors/T). Description is background only.
-3. Pain priority P=0.3F+0.3S+0.2U+0.2W. Opportunity table: Top {top_n} plus all P>={pain_threshold}.
-4. Viability score V = 0.4*WTP + 0.3*reach/channel fit + 0.3*unit economics when evidence exists.
-5. Feasibility score T = 0.4*tech readiness (vs user experience and budget) + 0.3*IP white space + 0.3*differentiability vs competitors.
-6. At least 3 competitors per target market (brand, model, pros/cons, price band), plus feature comparison and white space — same layout as Product Feasibility 2.1–2.3.
-7. No empty cells. Start from "Three-pillar overview". Do not output title/basics table.
+1. Never invent URLs, patent numbers, competitor SKUs, or counts. Cite only SEARCH_BLOCK / TECH_BLOCK. VOC comes from web search only; the user did not paste VOC.
+2. User-entered pains and technical innovations are HYPOTHESES/CLAIMS, not conclusions. List every one and verdict: supported / partial / not found / contradicted. Unsupported claims must not inflate D or T.
+3. Pain priority P=0.3F+0.3S+0.2U+0.2W. Only supported/partial or search-discovered pains may enter the opportunity table with a computable P. Table: Top {top_n} plus all P>={pain_threshold}.
+4. Viability V = 0.4*WTP + 0.3*reach/channel + 0.3*unit economics when evidence exists.
+5. Feasibility T = 0.4*tech readiness + 0.3*IP white space + 0.3*differentiability. If patents/competitors already own the claimed tech, lower T.
+6. Innovation index I = 0.4*D + 0.3*V + 0.3*T (each pillar 1–10). Recommend development only if all three are strong.
+7. At least 3 competitors per market. No empty cells. Start from "Quantification overview". No title/basics table.
 
-## Three-pillar overview
-Table: pillar, score 1-10, one-line finding, main evidence, biggest gap. Rows: Desirability, Viability, Feasibility.
+## Quantification overview
+Give I and a three-pillar table (score, one-liner, search evidence, biggest gap). Show I arithmetic.
+Then a hypothesis-check table: user pain hypotheses, user tech claims, search verdict, effect on D/T.
 
 # Pillar 1 Desirability (do users want it)
-## D1 Score every user-entered pain point
-User pains (include every line, do not drop):
+## D1 Check every user-stated pain HYPOTHESIS
+User-believed pains (hypotheses to prove or disprove):
 {user_pains}
-Columns: user wording, VOC support?, F, S, U, W, P, ≥threshold {pain_threshold}?, evidence grade, n, citation.
+Columns: user wording, verdict (supported/partial/not found/contradicted), F, S, U, W, P, ≥threshold {pain_threshold}?, evidence grade, n, citation.
+Unsupported rows must not raise D.
 ## D1b Extra claims from the short description only if not already in the pain box.
 Product description: {product_description}
-## D2 Evidence and VOC by market (Chinese search, English search, YouTubers/reviews). Pasted {voc_n}, web VOC {search_n}. Then cross-market summary.
+## D2 VOC obtained by search (the only evidence source). Chinese+English, YouTubers/reviews, {search_n} hits. Separate: supports user hypothesis vs newly discovered pains.
 ## D3 Information channels — cover CHANNEL_GUIDE
 <<<CHANNEL_GUIDE>>>
 ## D4 JTBD by market
-## D5 Pain register with P (all user-entered pains first, source=user vs search)
+## D5 Pain register with P (user hypothesis + verdict first, then search-discovered; source column required)
 ## D6 Opportunity table: Top {top_n} + P>={pain_threshold}
 
 # Pillar 2 Viability (is the innovation worth it)
@@ -440,11 +469,11 @@ This is value, not a repeat of pains.
 ## V4 Value risks (false demand, no WTP, channel lock-out, long payback)
 
 # Pillar 3 Feasibility (can we build it — patents and competitors)
-## F1 Score every user-entered technical innovation
-User innovations (include every line):
+## F1 Check every user-claimed technical innovation
+User-believed innovations (claims to verify vs patents/competitors):
 {user_tech_innovations}
-Columns: user wording, patent hits (TECH_BLOCK URLs only), relation (blocking / design-around / white space), already in competitors?, tech readiness, IP white space, differentiability, T score, risk.
-If none found: "no public patent this run; FTO still required". Extra description-only tech can be extra rows.
+Columns: user wording, verdict (white space / design-around / competitor already has it / blocking patent), TECH_BLOCK URLs only, readiness, IP white space, differentiability, T contribution, risk.
+If none found: "no public patent this run; FTO still required".
 ## F2 Key technical requirements (Feasibility 4.1 style) vs {tech_experience} and {estimated_budget}
 ## F3 Competitor analysis (Feasibility 2.1–2.3)
 F3.1 >=3 competitors per market; F3.2 feature comparison; F3.3 white space vs patents and competitor features.
@@ -452,9 +481,10 @@ F3.1 >=3 competitors per market; F3.2 feature comparison; F3.3 white space vs pa
 ## F5 Feasibility score T
 
 # Synthesis
-C1 Go / no-go using the three scores
-C2 2–3 positioning options
-C3 Five next steps including VOC validation, patent FTO, competitor teardown, pricing/channel test
+C1 Innovation index I=0.4D+0.3V+0.3T and go / no-go
+C2 Which user hypotheses were supported vs falsified
+C3 2–3 positioning options
+C4 Five next steps including field VOC, patent FTO, competitor teardown, pricing/channel test
 
 Other: {additional_info}
 
@@ -468,18 +498,31 @@ Output English Markdown only.
 
 TEXTS = {
     "zh": {
-        "title": "创新分析",
+        "title": "创新分析系统",
         "back": "← 返回应用导航",
-        "return_portal": "返回 TechLife 门户",
+        "return_portal": "返回门户",
         "sidebar_analyst": "分析师信息",
         "sidebar_title": "分析说明",
-        "sidebar_basis": "本模块用于：",
-        "basis_items": [
-            "Desirability：痛点是否真实、有多痛",
-            "Viability：创新有没有商业价值（谁付钱）",
-            "Feasibility：技术、专利空白与竞品",
-            "用户描述中的技术创新会做专利/竞品核对",
-        ],
+        "sidebar_how": """本系统把你填写的痛点和技术创新当作**假设**，再用 AI 中英文网页检索去印证或证伪，而不是让你自己贴 VOC。
+
+**怎么做分析**
+1. 填写产品、市场，以及你认为的痛点与技术创新。
+2. 系统按市场检索测评、评论、社媒、专利与竞品。
+3. 判定每条假设：印证 / 部分印证 / 未印证 / 反证；并补上你没写到的真实痛点。
+4. 用公式打分，合成创新指数 I。
+
+**痛点从哪来**
+- 唯一证据来源：目标市场的中英文 VOC 检索（YouTuber、测评、电商评论等）
+- 先核对你列出的假设是否被真实用户提到
+- 再收录检索新发现的高频痛点
+
+**如何量化创新**
+- 痛点优先级 **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**（频次、严重度、未满足、付费意愿）。缺证据则该维未知，P 不可计算。
+- 机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的用户假设不得抬高分数。
+- Desirability D：已验证痛点的 P 与证据等级
+- Viability **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济**
+- Feasibility **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×相对竞品可差异化**
+- 创新指数 **I = 0.4×D + 0.3×V + 0.3×T**。三支柱都高才建议投入。""",
         "analyst_name_label": "分析人姓名",
         "analyst_name_ph": "请输入分析师姓名",
         "analyst_title_label": "分析人头衔（可选）",
@@ -494,12 +537,12 @@ TEXTS = {
         "product_name_ph": "例如：宠物智能饮水机 / Smart pet fountain",
         "product_desc": "产品简要描述",
         "product_desc_ph": "产品是什么、给谁用、主功能。中英文均可。",
-        "user_pains": "用户痛点（一行一条）",
+        "user_pains": "你认为的用户痛点（假设，一行一条）",
         "user_pains_ph": "清洗困难，内壁发霉\n夜间噪音大，影响睡眠\n漏水泡坏地板",
-        "user_pains_caption": "你认为的核心痛点。报告会逐条检索 VOC 并打 P 分（Desirability）。",
-        "user_tech": "技术创新（一行一条）",
+        "user_pains_caption": "这是你的假设，不是结论。系统会用网页 VOC 检索印证或证伪，并补充你没写到的痛点。",
+        "user_tech": "你认为的技术创新（声称，一行一条）",
         "user_tech_ph": "可拆洗紫外杀菌模块\n流量传感误差<5%\n食品级水路无死角",
-        "user_tech_caption": "你认为的技术创新。报告会逐条检索类似专利/竞品并打 Feasibility 分。",
+        "user_tech_caption": "这是你的技术声称。系统会检索专利与竞品，判断空白、可规避还是已被占。",
         "target_markets": "目标市场",
         "market_options": ["中国大陆", "美国", "欧洲", "东南亚", "日本", "其他"],
         "custom_market": "其他市场（逗号分隔）",
@@ -545,23 +588,36 @@ TEXTS = {
         "download_section": "📥 下载",
         "download_btn": "下载 Word 文档",
         "download_excel": "下载 Excel（VOC 数据库）",
-        "method_title": "痛点优先级 P 与阈值如何计算",
+        "method_title": "如何量化创新",
         "clear_btn": "清除报告并重新填写",
         "footer": "创新分析模块 · 证据优先于推断",
     },
     "en": {
-        "title": "Innovation Analysis",
+        "title": "Innovation Analysis System",
         "back": "← Back to app navigation",
-        "return_portal": "Back to TechLife Portal",
+        "return_portal": "Back to portal",
         "sidebar_analyst": "Analyst",
-        "sidebar_title": "About this module",
-        "sidebar_basis": "This module is for:",
-        "basis_items": [
-            "Desirability: are pains real and how acute",
-            "Viability: is the innovation worth money",
-            "Feasibility: technology, patent white space, competitors",
-            "Technical claims in the description are checked against patents",
-        ],
+        "sidebar_title": "How analysis works",
+        "sidebar_how": """Your pain points and technical innovations are **hypotheses**. The system searches the web in Chinese and English to prove or disprove them. You do not paste VOC.
+
+**How it runs**
+1. Enter the product, markets, and the pains/tech you believe matter.
+2. The app searches reviews, social, patents, and competitors by market.
+3. Each hypothesis is marked supported / partial / not found / contradicted; new real pains are added.
+4. Scores are combined into innovation index I.
+
+**Where pains come from**
+- Only evidence source: bilingual VOC search (YouTubers, reviews, store comments)
+- First check whether your listed hypotheses appear in real user language
+- Then add high-frequency pains you did not list
+
+**How innovation is quantified**
+- Pain priority **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W** (frequency, severity, unmet, WTP). Missing evidence → P not computable.
+- Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.
+- Desirability D: P and evidence grade of *verified* pains
+- Viability **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics**
+- Feasibility **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability vs competitors**
+- Innovation index **I = 0.4×D + 0.3×V + 0.3×T**. Invest only if all three are strong.""",
         "analyst_name_label": "Analyst name",
         "analyst_name_ph": "Your name",
         "analyst_title_label": "Title (optional)",
@@ -576,12 +632,12 @@ TEXTS = {
         "product_name_ph": "e.g., Smart pet fountain / 宠物智能饮水机",
         "product_desc": "Short description",
         "product_desc_ph": "What it is, who it is for, main functions. Chinese or English.",
-        "user_pains": "Pain points (one per line)",
+        "user_pains": "Pains you believe (hypotheses, one per line)",
         "user_pains_ph": "Hard to clean, mold inside\nToo noisy at night\nLeaks damage the floor",
-        "user_pains_caption": "The pains you believe matter. Each will be VOC-checked and scored with P (Desirability).",
-        "user_tech": "Technical innovations (one per line)",
+        "user_pains_caption": "These are hypotheses, not conclusions. Web VOC search will support or falsify them and add pains you missed.",
+        "user_tech": "Technical innovations you claim (one per line)",
         "user_tech_ph": "Detachable UV sterilization module\nFlow-sensor error <5%\nDead-corner-free food-grade water path",
-        "user_tech_caption": "The innovations you claim. Each will be searched against patents/competitors and scored for Feasibility.",
+        "user_tech_caption": "These are claims. Patent and competitor search will judge white space, design-around, or already taken.",
         "target_markets": "Target markets",
         "market_options": ["Mainland China", "United States", "Europe", "Southeast Asia", "Japan", "Others"],
         "custom_market": "Other markets (comma separated)",
@@ -627,7 +683,7 @@ TEXTS = {
         "download_section": "📥 Download",
         "download_btn": "Download Word",
         "download_excel": "Download Excel (VOC database)",
-        "method_title": "How pain priority P and the threshold are calculated",
+        "method_title": "How innovation is quantified",
         "clear_btn": "Clear report and edit inputs",
         "footer": "Innovation Analysis · evidence before inference",
     },
@@ -689,73 +745,59 @@ def expand_bilingual_terms(
 
 def scoring_method_markdown(lang: str, threshold: float, top_n: int) -> str:
     if lang == "zh":
-        return f"""## 痛点优先级与阈值计算方法
+        return f"""用户填写的痛点与技术创新是**假设**。分数只来自网页检索到的 VOC / 专利 / 竞品，未印证的假设不得抬高分数。
 
-本次第 7 部分入选规则使用痛点优先级 **P（1–10 分）**：
-
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**
-
-| 符号 | 含义 | 怎么打分（1–10） |
-|------|------|------------------|
-| F 频次 | 有多少人遇到、提及有多密 | 有 VOC 时用提及率/条数；无证据则「未知」 |
-| S 严重度 | 后果有多糟（安全、退货、工时、金钱） | 差评/退货/安全相关更高 |
-| U 未满足 | 现有产品把这件事解决得有多差 | 竞品差评、反复吐槽更高 |
-| W 付费意愿 | 用户是否愿意为解决它多付钱 | 访谈/溢价线索；无证据则「未知」 |
-
-任一维度为「未知」时，**P 记为「不可计算」**，不得用假数字凑权重。
-
-**入选第 7 部分创新机会表：**
-
-1. 先按 P 从高到低列出至少 **Top {top_n}**（P 不可计算的排在后面，并标注假设）。
-2. 凡 **P ≥ {threshold:g}** 的机会全部列入，因此行数可以多于 {top_n}。
-3. P 不可计算的项目**不因阈值扩列**，除非已经进入 Top {top_n}。
-
-默认阈值 6.0 表示「中等偏上、值得认真做」；调高更严、调低覆盖更多中等痛点。
-
-## 创新三支柱如何评分
-
-Innovation 报告分三块，避免只看痛点：
-
-| 支柱 | 评价什么 | 分数 |
-|------|----------|------|
-| Desirability 想要吗 | 痛点是否真实、有多痛 | 主要看 P（及 VOC 证据等级） |
-| Viability 值得吗 | 创新能否变成钱 | **V = 0.4×W + 0.3×可触达/渠道 + 0.3×单位经济** |
-| Feasibility 做得到吗 | 技术、专利空白、竞品是否已占 | **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×与竞品可差异化** |
-
-三支柱都高才建议投入开发；Desirability 高但 Viability 低 = 伪需求/不付钱；Desirability 高但 Feasibility 低 = 专利墙或做不出来。
-"""
-    return f"""## How pain priority P and the threshold are calculated
-
-Part 7 uses pain priority **P (1–10)**:
+**痛点优先级 P（1–10）**
 
 **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**
 
-| Symbol | Meaning | Scoring (1–10) |
-|------|------|------------------|
-| F frequency | How many people hit it / how often it is mentioned | Use mention rate when VOC exists; else Unknown |
-| S severity | How bad the consequence is (safety, returns, time, money) | Higher if returns/safety |
-| U unmet need | How poorly current products solve it | Higher if repeated competitor complaints |
-| W willingness-to-pay | Whether users would pay more to fix it | Interview/price-premium clues; else Unknown |
-
-If any factor is Unknown, **P = not computable**. Do not invent weights.
-
-**Inclusion in the Part 7 opportunity table:**
-
-1. List at least **Top {top_n}** by P (non-computable P last, marked hypothesis).
-2. Include **every** opportunity with **P ≥ {threshold:g}**, so the table may exceed {top_n} rows.
-3. Non-computable P is **not** added by the threshold unless it already made Top {top_n}.
-
-Default 6.0 means "above-medium, worth doing seriously". Raise it to be stricter; lower it to include more mid pains.
-
-## How the three innovation pillars are scored
-
-| Pillar | What it asks | Score |
+| 符号 | 含义 | 打分 |
 |------|------|------|
-| Desirability | Do users want it? Are pains real? | Mainly P plus VOC evidence grade |
-| Viability | Is the innovation worth money? | **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics** |
-| Feasibility | Can we build it? Patents and competitors | **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability** |
+| F 频次 | 多少人遇到、提及有多密 | 有 VOC 用提及率；无证据=未知 |
+| S 严重度 | 后果有多糟 | 退货/安全更高 |
+| U 未满足 | 现有产品解决得多差 | 反复吐槽更高 |
+| W 付费意愿 | 是否愿意为解决它付钱 | 溢价线索；无证据=未知 |
 
-Enter development only if all three are strong. High Desirability + low Viability = nobody pays. High Desirability + low Feasibility = patent wall or cannot build.
+任一维未知则 **P 不可计算**。机会表：先 **Top {top_n}**，再列入所有 **P ≥ {threshold:g}**。
+
+**三支柱与创新指数**
+
+| 支柱 | 评价什么 | 公式 |
+|------|----------|------|
+| D 想要吗 | 已验证痛点有多真、有多痛 | 已印证痛点的 P 与证据等级 |
+| V 值得吗 | 能否变成可持续的钱 | **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济** |
+| T 做得到吗 | 技术、专利空白、竞品是否已占 | **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×可差异化** |
+
+**创新指数 I = 0.4×D + 0.3×V + 0.3×T**
+
+三支柱都高才建议投入。D 高 V 低 = 不付钱；D 高 T 低 = 专利墙或做不出来。
+"""
+    return f"""User-entered pains and technical innovations are **hypotheses**. Scores use web VOC / patents / competitors only. Unsupported claims must not inflate scores.
+
+**Pain priority P (1–10)**
+
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**
+
+| Symbol | Meaning | Scoring |
+|------|------|------|
+| F frequency | How many people hit it | Mention rate if VOC exists; else unknown |
+| S severity | How bad the consequence is | Higher for returns/safety |
+| U unmet | How poorly current products solve it | Higher if repeated complaints |
+| W WTP | Would users pay more to fix it | Premium clues; else unknown |
+
+If any factor is unknown, **P is not computable**. Opportunity table: **Top {top_n}**, then every **P ≥ {threshold:g}**.
+
+**Three pillars and innovation index**
+
+| Pillar | Question | Formula |
+|------|------|------|
+| D desirability | Are verified pains real and acute? | P and evidence grade of supported pains |
+| V viability | Can it become money? | **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics** |
+| T feasibility | Can we build it? Patents and competitors | **T = 0.4×readiness + 0.3×IP white space + 0.3×differentiability** |
+
+**Innovation index I = 0.4×D + 0.3×V + 0.3×T**
+
+Invest only if all three are strong. High D + low V = nobody pays. High D + low T = patent wall or cannot build.
 """
 
 
@@ -982,9 +1024,16 @@ def build_voc_excel_bytes(
     return buf.getvalue()
 
 
+def set_app_language(lang: str) -> None:
+    if lang not in ("zh", "en"):
+        lang = "zh"
+    st.session_state.lang = lang
+    st.query_params["lang"] = lang
+
+
 def _title_html(label: str) -> str:
     return (
-        f'<div style="display:flex;align-items:center;gap:12px;margin:0 0 0.4rem 0;">'
+        f'<div style="display:flex;align-items:center;gap:12px;margin:0 0 0.6rem 0;">'
         f'<span style="display:inline-block;width:28px;height:28px;border-radius:8px;'
         f'background:{ICON_COLOR};flex-shrink:0;"></span>'
         f'<h1 style="margin:0;font-size:1.75rem;">{label}</h1></div>'
@@ -995,39 +1044,60 @@ def render_innovation_app(*, embedded: bool = False) -> None:
     lang = st.session_state.get("lang", "zh")
     if lang not in TEXTS:
         lang = "zh"
+        st.session_state.lang = lang
     t = TEXTS[lang]
     api_key, base_url, model = _ai_config()
+    username = st.session_state.get("username") or (
+        (st.session_state.get("user_email") or "User").split("@")[0]
+    )
+    portal_url = _secret("APP_BASE_URL", default=PORTAL_HOME_URL)
 
     with st.sidebar:
-        picked_lang = st.radio(
-            "Language",
-            options=["zh", "en"],
-            format_func=lambda code: "中文" if code == "zh" else "English",
-            index=0 if lang == "zh" else 1,
-            key="inn_ui_lang",
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-        if picked_lang != lang:
-            st.session_state.lang = picked_lang
-            st.rerun()
-        st.markdown(f"### {t['sidebar_analyst']}")
+        render_enterprise_sidebar_brand()
+        st.markdown(f"### 👤 {username}")
+        if not is_enterprise_user():
+            remaining = get_remaining_trials(st.session_state.get("user_id") or "")
+            if remaining == -1:
+                st.info("🎫 剩余免费次数: ∞ (专业版)" if lang == "zh" else "🎫 Remaining trials: ∞ (Pro)")
+            else:
+                st.info(
+                    f"🎫 剩余免费次数: {remaining}" if lang == "zh" else f"🎫 Remaining trials: {remaining}"
+                )
+        st.markdown("---")
+        st.markdown(f"## {t['sidebar_title']}")
+        st.markdown(t["sidebar_how"])
+        st.markdown("---")
         analyst_name = st.text_input(t["analyst_name_label"], placeholder=t["analyst_name_ph"], key="inn_analyst_name")
         analyst_title = st.text_input(t["analyst_title_label"], placeholder=t["analyst_title_ph"], key="inn_analyst_title")
+        if analyst_name:
+            st.markdown(f"**{t['analyst_name_label']}: {analyst_name}**")
+            if analyst_title:
+                st.markdown(f"_{analyst_title}_")
+        else:
+            st.caption(t["analyst_name_ph"])
+        st.markdown("---")
         st.markdown(f"**{t['api_status']}**")
         if api_key:
             st.success(t["api_configured"])
         else:
             st.error(t["api_not_configured"])
-        st.divider()
-        st.markdown(f"### {t['sidebar_title']}")
-        st.caption(t["sidebar_basis"])
-        for item in t["basis_items"]:
-            st.caption(f"• {item}")
-        st.divider()
-        portal_url = _secret("APP_BASE_URL", default=PORTAL_HOME_URL)
+        st.markdown("---")
         st.link_button(t["return_portal"], portal_url, use_container_width=True)
 
+    if is_enterprise_user():
+        col1, col2, col3 = st.columns([8, 1, 1])
+    else:
+        col1, col2, col3 = st.columns([8, 1, 1])
+    with col2:
+        if st.button("中文", key="zh_btn", type="primary"):
+            set_app_language("zh")
+            st.rerun()
+    with col3:
+        if st.button("English", key="en_btn", type="primary"):
+            set_app_language("en")
+            st.rerun()
+
+    render_enterprise_main_brand()
     st.markdown(_title_html(t["title"]), unsafe_allow_html=True)
     st.caption(t["input_lang_hint"])
 
@@ -1082,7 +1152,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
 
     st.markdown(f"#### {t['pain_threshold_label']}")
     st.caption(t["pain_threshold_help"])
-    col_th, col_n, col_web = st.columns([2, 2, 3])
+    col_th, col_n = st.columns(2)
     with col_th:
         pain_threshold = st.slider(
             t["pain_threshold_label"],
@@ -1095,15 +1165,8 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         )
     with col_n:
         top_n = st.number_input(t["top_n_label"], min_value=5, max_value=30, value=10, step=1, key="inn_top_n")
-    with col_web:
-        do_web_search = st.checkbox(t["web_search_label"], value=True, key="inn_web_search")
 
-    st.markdown(f"#### {t['voc_title']}")
-    st.caption(t["voc_caption"])
-    voc_raw = st.text_area("", placeholder=t["voc_ph"], height=160, key="inn_voc")
-    parsed_voc = parse_voc_paste(voc_raw)
-    if parsed_voc["n"]:
-        st.info(t["voc_preview"].format(n=parsed_voc["n"], channels=json.dumps(parsed_voc["by_channel"], ensure_ascii=False)))
+    parsed_voc = parse_voc_paste("")
 
     st.markdown("---")
     submitted = st.button(t["submit_btn"], type="primary", use_container_width=True, key="inn_submit")
@@ -1154,15 +1217,12 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                                 }
                             )
                             existing.add(item.lower())
-                    search_payload = {"n": 0, "hits": [], "by_market": {}, "errors": []}
-                    tech_payload = {"n": 0, "hits": [], "errors": []}
-                    if do_web_search:
-                        progress.progress(20, text=t["progress_search"])
-                        search_payload = search_all_markets(
-                            markets, product_zh, product_en, extra_terms=user_pain_items
-                        )
-                        progress.progress(40, text=t["progress_search"])
-                        tech_payload = search_patents_and_competitors(product_zh, product_en, claims)
+                    progress.progress(20, text=t["progress_search"])
+                    search_payload = search_all_markets(
+                        markets, product_zh, product_en, extra_terms=user_pain_items
+                    )
+                    progress.progress(40, text=t["progress_search"])
+                    tech_payload = search_patents_and_competitors(product_zh, product_en, claims)
                     voc_block = voc_block_for_prompt(parsed_voc, lang)
                     search_block = format_search_block(search_payload, lang)
                     tech_block = format_tech_block(tech_payload, claims, lang)
@@ -1234,7 +1294,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         top_n=int(top_n),
                     )
                     method = scoring_method_markdown(lang, float(pain_threshold), int(top_n))
-                    report = header + "\n" + method + "\n---\n\n" + body.lstrip()
+                    report = header + "\n---\n\n" + body.lstrip()
                     st.session_state.innovation_report = report
                     st.session_state.innovation_report_lang = lang
                     st.session_state.innovation_product_name = product_name
@@ -1275,7 +1335,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         st.markdown(report)
         method = st.session_state.get("innovation_method") or ""
         if method:
-            with st.expander(t["method_title"], expanded=True):
+            with st.expander(t["method_title"], expanded=False):
                 st.markdown(method)
         st.markdown("---")
         st.markdown(f"### {t['download_section']}")
@@ -1284,7 +1344,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         dl1, dl2 = st.columns(2)
         with dl1:
             try:
-                doc = markdown_to_docx(report, lang)
+                doc = markdown_to_docx(report + "\n\n## " + t["method_title"] + "\n\n" + (method or ""), lang)
                 buf = BytesIO()
                 doc.save(buf)
                 buf.seek(0)
@@ -1319,20 +1379,29 @@ def render_innovation_app(*, embedded: bool = False) -> None:
 
 
 def run_standalone() -> None:
-    """Streamlit entry for a dedicated Cloud app, or portal ?app=innovation."""
+    """Standalone Streamlit Cloud entry, same SSO pattern as Product Feasibility."""
     try:
-        st.set_page_config(page_title="Innovation Analysis", page_icon="🔹", layout="wide")
+        st.set_page_config(page_title="Innovation Analysis System", page_icon="🔹", layout="wide")
     except Exception:
         pass
     from subscription_utils import require_portal_user
 
+    ensure_enterprise_session_defaults()
     user = require_portal_user()
     st.session_state.user_id = user["user_id"]
-    st.session_state.user_email = user.get("email")
-    st.session_state.lang = user.get("lang") or st.session_state.get("lang", "zh")
+    st.session_state.user_email = user.get("email") or ""
+    if st.session_state.user_email and "@" in st.session_state.user_email:
+        st.session_state.username = st.session_state.user_email.split("@")[0]
+    else:
+        st.session_state.username = st.session_state.get("username") or "User"
+    if "lang" not in st.session_state or st.session_state.lang not in ("zh", "en"):
+        set_app_language(user.get("lang") or "zh")
     if user.get("organization_id"):
         st.session_state.organization_id = user["organization_id"]
     st.session_state.trials_left = user.get("trials_left", 0)
+    url, headers = _supabase_config()
+    if url and headers.get("apikey"):
+        load_enterprise_branding(url, headers)
     render_innovation_app(embedded=False)
 
 
