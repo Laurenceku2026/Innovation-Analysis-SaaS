@@ -1,4 +1,4 @@
-"""Innovation Analysis — standalone Streamlit Cloud app (TechLife child app).
+"""Innovation Assessment — standalone Streamlit Cloud app (TechLife child app).
 
 Deploy: GitHub Laurenceku2026/Innovation-Analysis-SaaS, main file app.py.
 Secrets (JWT, Supabase, AI) belong on this Cloud app, not the portal.
@@ -498,7 +498,7 @@ Output English Markdown only.
 
 TEXTS = {
     "zh": {
-        "title": "创新分析系统",
+        "title": "创新评估系统",
         "back": "← 返回应用导航",
         "return_portal": "返回门户",
         "sidebar_analyst": "分析师信息",
@@ -579,25 +579,25 @@ TEXTS = {
         "pain_threshold_label": "痛点纳入阈值 P（1–10）",
         "pain_threshold_help": "P=0.3×频次+0.3×严重度+0.2×未满足+0.2×付费意愿。第7部分先出 Top N；凡 P≥阈值的机会全部列入，所以可以多于 N 条。建议默认 6.0。",
         "top_n_label": "至少输出机会数（Top N）",
-        "submit_btn": "🚀 开始创新分析",
+        "submit_btn": "🚀 开始创新评估",
         "product_name_missing": "请填写产品名称",
         "api_key_missing": "AI API Key 未配置",
         "generating": "正在分析证据与痛点量化…",
         "progress_preparing": "整理中英文检索词与 VOC 计数…",
         "progress_search": "按市场检索 VOC，并核对描述主张、专利与竞品…",
         "progress_analyzing": "按 Desirability / Viability / Feasibility 撰写中文报告…",
-        "progress_finishing": "整理创新分析报告…",
-        "error_prefix": "分析失败：",
-        "report_title": "📄 创新分析报告",
+        "progress_finishing": "整理创新评估报告…",
+        "error_prefix": "评估失败：",
+        "report_title": "📄 创新评估报告",
         "download_section": "📥 下载",
         "download_btn": "下载 Word 文档",
         "download_excel": "下载 Excel（VOC 数据库）",
         "method_title": "如何量化创新",
         "clear_btn": "清除报告并重新填写",
-        "footer": "创新分析模块 · 证据优先于推断",
+        "footer": "创新评估 · 证据优先于推断",
     },
     "en": {
-        "title": "Innovation Analysis System",
+        "title": "Innovation Assessment System",
         "back": "← Back to app navigation",
         "return_portal": "Back to portal",
         "sidebar_analyst": "Analyst",
@@ -678,7 +678,7 @@ TEXTS = {
         "pain_threshold_label": "Pain inclusion threshold P (1–10)",
         "pain_threshold_help": "P=0.3×frequency+0.3×severity+0.2×unmet+0.2×WTP. Part 7 always lists Top N, then adds every opportunity with P≥threshold (so it can exceed N). Default 6.0.",
         "top_n_label": "Minimum opportunities (Top N)",
-        "submit_btn": "🚀 Start innovation analysis",
+        "submit_btn": "🚀 Start innovation assessment",
         "product_name_missing": "Please enter the product name",
         "api_key_missing": "AI API Key not configured",
         "generating": "Analyzing evidence and pain quantification…",
@@ -686,14 +686,14 @@ TEXTS = {
         "progress_search": "Searching VOC by market, plus patents and competitors for your claims…",
         "progress_analyzing": "Writing the English report across Desirability / Viability / Feasibility…",
         "progress_finishing": "Assembling the report…",
-        "error_prefix": "Analysis failed: ",
-        "report_title": "📄 Innovation Analysis Report",
+        "error_prefix": "Assessment failed: ",
+        "report_title": "📄 Innovation Assessment Report",
         "download_section": "📥 Download",
         "download_btn": "Download Word",
         "download_excel": "Download Excel (VOC database)",
         "method_title": "How innovation is quantified",
         "clear_btn": "Clear report and edit inputs",
-        "footer": "Innovation Analysis · evidence before inference",
+        "footer": "Innovation Assessment · evidence before inference",
     },
 }
 
@@ -843,7 +843,7 @@ def report_header_markdown(
     top_n: int,
 ) -> str:
     if lang == "zh":
-        return f"""# 《创新分析报告》
+        return f"""# 《创新评估报告》
 ## {product_name}
 
 **报告在线访问地址：{report_url}**
@@ -872,7 +872,7 @@ def report_header_markdown(
 
 ---
 """
-    return f"""# Innovation Analysis Report
+    return f"""# Innovation Assessment Report
 ## {product_name}
 
 **Online report URL: {report_url}**
@@ -1211,7 +1211,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                     if analyst_name:
                         analyst_info = f"{analyst_name} ({analyst_title})" if analyst_title else analyst_name
                     else:
-                        analyst_info = "创新分析师" if lang == "zh" else "Innovation analyst"
+                        analyst_info = "创新评估" if lang == "zh" else "Innovation Assessment"
 
                     user_pain_items = split_user_items(user_pains_raw)
                     user_tech_items = split_user_items(user_tech_raw)
@@ -1374,7 +1374,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                 st.download_button(
                     t["download_btn"],
                     data=buf,
-                    file_name=f"{safe_name}_Innovation_Analysis.docx",
+                    file_name=f"{safe_name}_Innovation_Assessment.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key="inn_dl_docx",
                     use_container_width=True,
@@ -1404,7 +1404,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
 def run_standalone() -> None:
     """Standalone Streamlit Cloud entry, same SSO pattern as Product Feasibility."""
     try:
-        st.set_page_config(page_title="Innovation Analysis System", page_icon="🔹", layout="wide")
+        st.set_page_config(page_title="Innovation Assessment System", page_icon="🔹", layout="wide")
     except Exception:
         pass
     from subscription_utils import require_portal_user

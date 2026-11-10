@@ -1,8 +1,8 @@
-# Innovation Analysis
+# Innovation Assessment
 
 Independent TechLife child app (same pattern as Product Feasibility SaaS).
 
-Users log into [TechLife Portal](https://techlife-app.streamlit.app), then click **进入** on 创新分析. The portal opens this Streamlit app in a new tab with a signed token.
+Users log into [TechLife Portal](https://techlife-app.streamlit.app), then click **进入** on **创新评估**. The portal opens this Streamlit app in a new tab with a signed token.
 
 ## Streamlit Cloud
 
