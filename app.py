@@ -518,8 +518,8 @@ TEXTS = {
 
 **如何量化创新**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。这里的 0.3/0.2 是**权重**。F、S、U、W 都必须先变成 **1–10 分**，所以 P 最大为 10，不会出现「次数×0.3>10」。
-- **F 频次分**：不是提及次数。设本次 VOC 总条数为 N，该痛点命中 n 条，**r = n/N**。N≥8 且 n≥1 时 **F = min(10, max(1, round(10×r / r_star)))**。**r_star 是满分门槛**：提及占比达到 r_star 则 F=10。默认 0.30（30%）。N 太小或 n=0 → F 未知。
-- **S 严重度分（1–10）**：看这 n 条里后果有多糟（安全/退货/不可用→高；轻微抱怨→低）。没有后果用语 → 未知。
+- **F 频次分**：不是提及次数。设本次 VOC 总条数为 N，该痛点命中 n 条，**r = n/N**。N≥8 且 n≥1 时 **F = min(10, max(1, round(10×r / r_star)))**。**r_star 是满分门槛**：提及占比达到 r_star 则 F=10。默认 0.30（30%）。N 太小或 n=0 → F 未知。""",
+        "sidebar_suw": """- **S 严重度分（1–10）**：看这 n 条里后果有多糟（安全/退货/不可用→高；轻微抱怨→低）。没有后果用语 → 未知。
 - **U 未满足分（1–10）**：这 n 条里有多少在说现有产品/竞品没解决。u=未解决条数/n，**U = min(10, max(1, round(10×u)))**。看不出 → 未知。
 - **W 付费意愿分（1–10）**：只看是否出现愿加价、会买、换品、嫌贵但仍要解决。完全没有价格/购买用语 → 未知。
 - 任一维未知则 **P 不可计算**。机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。""",
@@ -620,8 +620,8 @@ TEXTS = {
 
 **How innovation is quantified**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. The 0.3/0.2 are **weights**. F, S, U, W are first scaled to **1–10**, so P cannot exceed 10. Raw mention count is never multiplied.
-- **F frequency score**: not the raw count. N = VOC hits this run, n = hits for this pain, **r = n/N**. If N≥8 and n≥1, **F = min(10, max(1, round(10×r / r_star)))**. **r_star** is the full-score bar: a mention share of r_star gives F=10. Default 0.30 (30%). Else F unknown.
-- **S severity (1–10)**: how bad the consequence is in those n snippets (safety/returns/unusable high; mild gripe low). No consequence language → unknown.
+- **F frequency score**: not the raw count. N = VOC hits this run, n = hits for this pain, **r = n/N**. If N≥8 and n≥1, **F = min(10, max(1, round(10×r / r_star)))**. **r_star** is the full-score bar: a mention share of r_star gives F=10. Default 0.30 (30%). Else F unknown.""",
+        "sidebar_suw": """- **S severity (1–10)**: how bad the consequence is in those n snippets (safety/returns/unusable high; mild gripe low). No consequence language → unknown.
 - **U unmet (1–10)**: share of the n snippets saying current/competitor products fail. u = unsolved/n, **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown.
 - **W WTP (1–10)**: only if text shows pay-more / would-buy / switch / too-expensive-but-need-it. No price or purchase language → unknown.
 - If any factor is unknown, **P is not computable**. Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.""",
@@ -1114,6 +1114,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
             help=t["freq_full_help"],
         )
         st.caption(t["freq_full_caption"].format(pct=int(round(float(freq_full) * 100))))
+        st.markdown(t["sidebar_suw"])
         st.markdown(t["sidebar_index"])
         st.markdown("---")
         analyst_name = st.text_input(t["analyst_name_label"], placeholder=t["analyst_name_ph"], key="inn_analyst_name")
