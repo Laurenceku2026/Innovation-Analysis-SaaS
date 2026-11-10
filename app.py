@@ -518,15 +518,18 @@ TEXTS = {
 
 **如何量化创新**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。这里的 0.3/0.2 是**权重**。F、S、U、W 都必须先变成 **1–10 分**，所以 P 最大为 10，不会出现「次数×0.3>10」。
-- **F 频次分**：不是提及次数。设本次 VOC 总条数为 N，该痛点命中 n 条，**r = n/N**。N≥8 且 n≥1 时 **F = min(10, max(1, round(10×r/0.30)))**（占比 30% 即为 10 分）。N 太小或 n=0 → F 未知。
+- **F 频次分**：不是提及次数。设本次 VOC 总条数为 N，该痛点命中 n 条，**r = n/N**。N≥8 且 n≥1 时 **F = min(10, max(1, round(10×r / r_star)))**。**r_star 是满分门槛**：提及占比达到 r_star 则 F=10。默认 0.30（30%）。N 太小或 n=0 → F 未知。
 - **S 严重度分（1–10）**：看这 n 条里后果有多糟（安全/退货/不可用→高；轻微抱怨→低）。没有后果用语 → 未知。
 - **U 未满足分（1–10）**：这 n 条里有多少在说现有产品/竞品没解决。u=未解决条数/n，**U = min(10, max(1, round(10×u)))**。看不出 → 未知。
 - **W 付费意愿分（1–10）**：只看是否出现愿加价、会买、换品、嫌贵但仍要解决。完全没有价格/购买用语 → 未知。
-- 任一维未知则 **P 不可计算**。机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。
-- Desirability D：已验证痛点的 P 与证据等级
+- 任一维未知则 **P 不可计算**。机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。""",
+        "sidebar_index": """- Desirability D：已验证痛点的 P 与证据等级
 - Viability **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济**
 - Feasibility **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×相对竞品可差异化**
 - 创新指数 **I = 0.4×D + 0.3×V + 0.3×T**。三支柱都高才建议投入。""",
+        "freq_full_label": "频次满分门槛 r_star（提及占比）",
+        "freq_full_help": "r_star = 多少提及占比给 F=10。默认 0.30 表示占全部 VOC 的 30% 即为满分。调低更容易得高 F（更少提及也满分），调高更严。与 P 公式里的权重 0.3 无关。",
+        "freq_full_caption": "当前：提及占比达到 {pct}% 时 F=10。F = min(10, round(10×r / r_star))",
         "analyst_name_label": "分析人姓名",
         "analyst_name_ph": "请输入分析师姓名",
         "analyst_title_label": "分析人头衔（可选）",
@@ -617,15 +620,18 @@ TEXTS = {
 
 **How innovation is quantified**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. The 0.3/0.2 are **weights**. F, S, U, W are first scaled to **1–10**, so P cannot exceed 10. Raw mention count is never multiplied.
-- **F frequency score**: not the raw count. N = VOC hits this run, n = hits for this pain, **r = n/N**. If N≥8 and n≥1, **F = min(10, max(1, round(10×r/0.30)))** (30% share = 10). Else F unknown.
+- **F frequency score**: not the raw count. N = VOC hits this run, n = hits for this pain, **r = n/N**. If N≥8 and n≥1, **F = min(10, max(1, round(10×r / r_star)))**. **r_star** is the full-score bar: a mention share of r_star gives F=10. Default 0.30 (30%). Else F unknown.
 - **S severity (1–10)**: how bad the consequence is in those n snippets (safety/returns/unusable high; mild gripe low). No consequence language → unknown.
 - **U unmet (1–10)**: share of the n snippets saying current/competitor products fail. u = unsolved/n, **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown.
 - **W WTP (1–10)**: only if text shows pay-more / would-buy / switch / too-expensive-but-need-it. No price or purchase language → unknown.
-- If any factor is unknown, **P is not computable**. Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.
-- Desirability D: P and evidence grade of *verified* pains
+- If any factor is unknown, **P is not computable**. Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.""",
+        "sidebar_index": """- Desirability D: P and evidence grade of *verified* pains
 - Viability **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics**
 - Feasibility **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability vs competitors**
 - Innovation index **I = 0.4×D + 0.3×V + 0.3×T**. Invest only if all three are strong.""",
+        "freq_full_label": "Frequency full-score bar r_star (mention share)",
+        "freq_full_help": "r_star = mention share that maps to F=10. Default 0.30 means 30% of all VOC hits is a perfect frequency score. Lower = easier high F; higher = stricter. Not the 0.3 weight in P.",
+        "freq_full_caption": "Now: mention share {pct}% → F=10. F = min(10, round(10×r / r_star))",
         "analyst_name_label": "Analyst name",
         "analyst_name_ph": "Your name",
         "analyst_title_label": "Title (optional)",
@@ -751,16 +757,19 @@ def expand_bilingual_terms(
     return product_name, product_name, []
 
 
-def score_rubric_markdown(lang: str, search_n: int) -> str:
+def score_rubric_markdown(lang: str, search_n: int, freq_full: float = 0.30) -> str:
     n_total = int(search_n or 0)
+    r_star = max(0.05, min(1.0, float(freq_full or 0.30)))
+    pct = int(round(r_star * 100))
     if lang == "zh":
         return f"""**F/S/U/W 都是 1–10 分，不是原始次数。** 公式里的 0.3、0.2 是权重，因此 **P 落在 1–10**，不会出现「提及次数×0.3>10」。
 
 本次网页 VOC 总条数 **N = {n_total}**。对每一条痛点，n = SEARCH_BLOCK 中明确提到该痛点的条数（禁止虚构 n）。**r = n/N**。
+本次满分门槛 **r_star = {r_star:.2f}（提及占比 {pct}% 时 F=10）**。r_star 与 P 的权重 0.3 无关。
 
 | 符号 | 数据怎么来 | 如何变成 1–10 分 |
 |------|------------|------------------|
-| **F 频次分** | 提及率 r=n/N，不是 n 本身 | N≥8 且 n≥1：**F = min(10, max(1, round(10×r/0.30)))**。r≥0.30 → F=10。否则 F=未知 |
+| **F 频次分** | 提及率 r=n/N，不是 n 本身 | N≥8 且 n≥1：**F = min(10, max(1, round(10×r/{r_star:.2f})))**。r≥{r_star:.2f} → F=10。否则 F=未知 |
 | **S 严重度分** | 这 n 条 VOC 的后果用语 | 10 安全/伤人/财产损坏；8 退货/不能用；6 经常费时；4 轻度抱怨；2 口味偏好。无后果用语 → 未知 |
 | **U 未满足分** | 这 n 条里说现有产品/竞品没解决的比例 u | **U = min(10, max(1, round(10×u)))**。看不出 → 未知 |
 | **W 付费意愿分** | 这 n 条里的加价/会买/换品/嫌贵仍要解决 | 10 明确愿加价或已为替代方案付钱；7 解决了就会买；4 仅暗示有价值。全无价格/购买用语 → 未知 |
@@ -769,10 +778,11 @@ def score_rubric_markdown(lang: str, search_n: int) -> str:
     return f"""**F, S, U, W are 1–10 scores, not raw counts.** The 0.3 and 0.2 in P are weights, so **P stays in 1–10**. Never do 0.3 × mention-count.
 
 Total web VOC hits this run **N = {n_total}**. For each pain, n = SEARCH_BLOCK hits that mention it (do not invent n). **r = n/N**.
+Full-score bar this run **r_star = {r_star:.2f}** (mention share {pct}% → F=10). r_star is not the 0.3 weight in P.
 
 | Symbol | Data | Scale to 1–10 |
 |------|------|------|
-| **F frequency** | share r=n/N, not n | If N≥8 and n≥1: **F = min(10, max(1, round(10×r/0.30)))**. r≥0.30 → F=10. Else unknown |
+| **F frequency** | share r=n/N, not n | If N≥8 and n≥1: **F = min(10, max(1, round(10×r/{r_star:.2f})))**. r≥{r_star:.2f} → F=10. Else unknown |
 | **S severity** | consequence language in those n hits | 10 safety/injury/property; 8 return/unusable; 6 recurring time-cost; 4 mild gripe; 2 preference. No consequence words → unknown |
 | **U unmet** | share u of the n hits saying current/competitor products fail | **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown |
 | **W WTP** | pay-more / would-buy / switch language in those n hits | 10 explicit extra pay or already paying a workaround; 7 would buy if solved; 4 value implied only. No price/purchase language → unknown |
@@ -780,8 +790,10 @@ Total web VOC hits this run **N = {n_total}**. For each pain, n = SEARCH_BLOCK h
 **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. If any factor is unknown, P is not computable. Tables must show n, N, r, F, S, U, W, P."""
 
 
-def scoring_method_markdown(lang: str, threshold: float, top_n: int, search_n: int = 0) -> str:
-    rubric = score_rubric_markdown(lang, search_n)
+def scoring_method_markdown(
+    lang: str, threshold: float, top_n: int, search_n: int = 0, freq_full: float = 0.30
+) -> str:
+    rubric = score_rubric_markdown(lang, search_n, freq_full)
     if lang == "zh":
         return f"""用户填写的痛点与技术创新是**假设**。分数只来自网页检索到的 VOC / 专利 / 竞品，未印证的假设不得抬高分数。
 
@@ -841,6 +853,7 @@ def report_header_markdown(
     search_n: int,
     pain_threshold: float,
     top_n: int,
+    freq_full: float = 0.30,
 ) -> str:
     if lang == "zh":
         return f"""# 《创新评估报告》
@@ -866,6 +879,7 @@ def report_header_markdown(
 | 网页检索条数 | {search_n} |
 | 分析框架 | Desirability / Viability / Feasibility |
 | 痛点纳入阈值 P | {pain_threshold:g} |
+| 频次满分门槛 r_star | {freq_full:.2f}（占比 {freq_full:.0%} 时 F=10） |
 | 至少输出机会数 | Top {top_n} |
 | 报告日期 | {current_date} |
 | 分析人 | {analyst_info} |
@@ -895,6 +909,7 @@ def report_header_markdown(
 | Web VOC items | {search_n} |
 | Framework | Desirability / Viability / Feasibility |
 | Pain inclusion threshold P | {pain_threshold:g} |
+| Frequency full-score bar r_star | {freq_full:.2f} (share {freq_full:.0%} → F=10) |
 | Minimum opportunities | Top {top_n} |
 | Report date | {current_date} |
 | Analyst | {analyst_info} |
@@ -999,6 +1014,7 @@ def build_voc_excel_bytes(
             "U",
             "W",
             "threshold",
+            "freq_full_r_star",
             "top_n",
             "inclusion_rule",
             "Desirability",
@@ -1007,11 +1023,12 @@ def build_voc_excel_bytes(
         ],
         "value": [
             "P=0.3F+0.3S+0.2U+0.2W",
-            "Frequency 1-10",
+            f"F=min(10, round(10*r/r_star)), r_star={meta.get('freq_full', 0.30)}",
             "Severity 1-10",
             "Unmet need 1-10",
             "Willingness to pay 1-10",
             meta.get("pain_threshold"),
+            meta.get("freq_full"),
             meta.get("top_n"),
             "Top N plus all P>=threshold",
             "Pain priority P and VOC evidence",
@@ -1086,6 +1103,18 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         st.markdown("---")
         st.markdown(f"## {t['sidebar_title']}")
         st.markdown(t["sidebar_how"])
+        freq_full = st.number_input(
+            t["freq_full_label"],
+            min_value=0.05,
+            max_value=1.00,
+            value=0.30,
+            step=0.05,
+            format="%.2f",
+            key="inn_freq_full",
+            help=t["freq_full_help"],
+        )
+        st.caption(t["freq_full_caption"].format(pct=int(round(float(freq_full) * 100))))
+        st.markdown(t["sidebar_index"])
         st.markdown("---")
         analyst_name = st.text_input(t["analyst_name_label"], placeholder=t["analyst_name_ph"], key="inn_analyst_name")
         analyst_title = st.text_input(t["analyst_title_label"], placeholder=t["analyst_title_ph"], key="inn_analyst_title")
@@ -1277,7 +1306,12 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         )
                         .replace("<<<VOC_BLOCK>>>", voc_block)
                         .replace("<<<SEARCH_BLOCK>>>", search_block)
-                        .replace("<<<SCORE_RUBRIC>>>", score_rubric_markdown(lang, int(search_payload.get("n") or 0)))
+                        .replace(
+                            "<<<SCORE_RUBRIC>>>",
+                            score_rubric_markdown(
+                                lang, int(search_payload.get("n") or 0), float(freq_full)
+                            ),
+                        )
                         .replace("<<<TECH_BLOCK>>>", tech_block)
                         .replace("<<<CHANNEL_GUIDE>>>", channel_guide)
                     )
@@ -1313,9 +1347,14 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         search_n=int(search_payload.get("n") or 0),
                         pain_threshold=float(pain_threshold),
                         top_n=int(top_n),
+                        freq_full=float(freq_full),
                     )
                     method = scoring_method_markdown(
-                        lang, float(pain_threshold), int(top_n), int(search_payload.get("n") or 0)
+                        lang,
+                        float(pain_threshold),
+                        int(top_n),
+                        int(search_payload.get("n") or 0),
+                        float(freq_full),
                     )
                     report = header + "\n---\n\n" + body.lstrip()
                     st.session_state.innovation_report = report
@@ -1332,7 +1371,11 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         user_pains=user_pain_items,
                         user_tech=user_tech_items,
                         markets=markets,
-                        meta={"pain_threshold": float(pain_threshold), "top_n": int(top_n)},
+                        meta={
+                            "pain_threshold": float(pain_threshold),
+                            "top_n": int(top_n),
+                            "freq_full": float(freq_full),
+                        },
                     )
                     progress.progress(100, text=t["generating"])
                     progress_slot.empty()
