@@ -440,6 +440,67 @@ def channel_query_hints(channel_detail: str) -> Tuple[List[str], List[str]]:
     return zh, en
 
 
+_STOP_TOKENS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "site",
+        "www",
+        "http",
+        "https",
+        "review",
+        "problem",
+        "评测",
+        "测评",
+        "评价",
+        "缺点",
+        "专利",
+    }
+)
+_JUNK_HOSTS = (
+    "flightaware.com",
+    "imdb.com",
+    "dndbeyond.com",
+    "merriam-webster.com",
+    "powerpoint.cloud.microsoft",
+    "app.powerbi.com",
+    "names.org",
+    "uidai.gov.in",
+    "skytexhomes.com",
+    "luissfinsurance.com",
+    "aristoteliansociety.org.uk",
+    "fedex.com",
+    "spotify.com",
+    "carerewritten.com",
+)
+
+
+def _product_keywords(*texts: str) -> List[str]:
+    keys: List[str] = []
+    seen = set()
+    for text in texts:
+        for tok in re.findall(r"[-A-Za-z]{3,}|[\u4e00-\u9fff]{2,}", text or ""):
+            low = tok.lower()
+            if low in _STOP_TOKENS or low in seen:
+                continue
+            seen.add(low)
+            keys.append(tok)
+    return keys[:16]
+
+
+def _hit_relevant(title: str, snippet: str, url: str, keys: List[str]) -> bool:
+    host = (urlparse(url).netloc or "").lower()
+    if any(j in host for j in _JUNK_HOSTS):
+        return False
+    if not keys:
+        return True
+    blob = f"{title} {snippet} {url}".lower()
+    return any(k.lower() in blob for k in keys)
+
+
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
     try:
         try:
@@ -483,26 +544,30 @@ def search_market_voc(
         (
             "zh",
             product_zh or product_en,
-            list(extra_hints_zh or []) + list(profile["site_hints_zh"]),
+            list(profile["site_hints_zh"])[:max_queries_per_lang]
+            + list(extra_hints_zh or [])[:6],
             profile["region_zh"],
-            len(extra_hints_zh or []),
+            min(6, len(extra_hints_zh or [])),
         ),
         (
             "en",
             product_en or product_zh,
-            list(extra_hints_en or []) + list(profile["site_hints_en"]),
+            list(profile["site_hints_en"])[:max_queries_per_lang]
+            + list(extra_hints_en or [])[:6],
             profile["region_en"],
-            len(extra_hints_en or []),
+            min(6, len(extra_hints_en or [])),
         ),
     ]
-    for query_lang, product, hints, region, n_priority in jobs:
+    keys = _product_keywords(product_zh, product_en)
+    default_n = {"zh": min(max_queries_per_lang, len(profile["site_hints_zh"])), "en": min(max_queries_per_lang, len(profile["site_hints_en"]))}
+    for query_lang, product, hints, region, n_channel in jobs:
         product = (product or "").strip()
         if not product:
             continue
-        cap = min(len(hints), n_priority + max_queries_per_lang)
-        for idx, hint in enumerate(hints[:cap]):
+        n_priority_start = default_n.get(query_lang, max_queries_per_lang)
+        for idx, hint in enumerate(hints):
             query = hint.format(p=product)
-            source = "user_channel" if idx < n_priority else query_source
+            source = "user_channel" if idx >= n_priority_start else query_source
             per_query = max_per_query + 1 if source == "user_channel" else max_per_query
             try:
                 results = _ddg_search(query, region, per_query)
@@ -513,6 +578,8 @@ def search_market_voc(
                 url = item.get("url") or ""
                 key = url or f"{item.get('title')}|{item.get('snippet')}"
                 if not key or key in seen:
+                    continue
+                if not _hit_relevant(item.get("title") or "", item.get("snippet") or "", url, keys):
                     continue
                 seen.add(key)
                 platform = _platform_from_url(url)
@@ -546,7 +613,13 @@ def search_all_markets(
     all_hits: List[Dict[str, str]] = []
     all_errors: List[str] = []
     by_market: Dict[str, List[Dict[str, str]]] = {}
-    extras = [t.strip() for t in (extra_terms or []) if t and t.strip()][:4]
+    extras = []
+    for term in extra_terms or []:
+        cleaned = re.sub(r"[;；]+", " ", term or "").strip(" ；;,。. ")
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        if cleaned and cleaned not in extras:
+            extras.append(cleaned)
+    extras = extras[:4]
     ch_zh, ch_en = channel_query_hints(channel_detail)
     channel_plan = parse_channel_search_plan(channel_detail)
     for market in markets:
@@ -564,8 +637,6 @@ def search_all_markets(
                 term,
                 max_per_query=3,
                 max_queries_per_lang=2,
-                extra_hints_zh=ch_zh[:4],
-                extra_hints_en=ch_en[:4],
             )
             hits.extend(more)
             errors.extend(more_err)
@@ -636,6 +707,20 @@ def search_patents_and_competitors(
         qseen.add(item[0])
         uniq.append(item)
 
+    keys = _product_keywords(
+        p_zh,
+        p_en,
+        *[str(c.get("terms_zh") or c.get("text") or "") for c in (claims or [])[:6]],
+        *[str(c.get("terms_en") or "") for c in (claims or [])[:6]],
+        "vibration",
+        "noise",
+        "patent",
+        "振动",
+        "噪音",
+        "减振",
+        "降噪",
+        "电动工具",
+    )
     for query, region, query_lang, purpose in uniq[:18]:
         try:
             results = _ddg_search(query, region, 4)
@@ -646,6 +731,8 @@ def search_patents_and_competitors(
             url = item.get("url") or ""
             key = url or f"{item.get('title')}|{item.get('snippet')}"
             if not key or key in seen:
+                continue
+            if not _hit_relevant(item.get("title") or "", item.get("snippet") or "", url, keys):
                 continue
             seen.add(key)
             platform = _platform_from_url(url)

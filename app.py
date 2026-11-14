@@ -165,9 +165,11 @@ def consume_trial(user_id: str, app_name: str = "innovation") -> Tuple[bool, int
 def split_user_items(raw: str) -> List[str]:
     items: List[str] = []
     for line in (raw or "").splitlines():
-        text = re.sub(r"^[\s·•\-\d\.、）)\]]+", "", line).strip()
-        if text:
-            items.append(text)
+        for part in re.split(r"[;；]+", line):
+            text = re.sub(r"^[\s·•\-\d\.、）)\]]+", "", part).strip()
+            text = text.strip(" ；;,。. ")
+            if text:
+                items.append(text)
     return items
 
 
