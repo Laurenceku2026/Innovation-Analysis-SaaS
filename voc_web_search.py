@@ -780,7 +780,7 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
         f"WEB_SEARCH_TOTAL={payload['n']}",
         f"VOC_COUNT={voc_n}",
         f"EXCLUDED_PATENT_OR_COMPETITOR={excluded}",
-        "n = all hits that mention the pain, including bucket=voc, patent, and competitor. F is 1-10 prevalence, NEVER 0.3*n.",
+        "n = count of SEARCH+TECH rows whose title/snippet mention the pain (reviews, claims, patents, shows). User-typed pains are hypotheses and do NOT add to n. F is 1-10 advisor score, NEVER equal to n, NEVER 0.3*n. n=0 => not supported, leave F blank.",
         "WEB_VOC_ITEMS_START",
     ]
     if plan.get("sites") or plan.get("keywords"):
@@ -803,14 +803,14 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
         lines.append("WEB_VOC_ERRORS=" + " | ".join(payload["errors"][:12]))
     if lang == "zh":
         lines.append(
-            "n=所有提到该痛点的条数（VOC+专利+竞品）。专利/竞品计入 Desirability 印证。F 用 1–10，禁止 0.3×n。"
-            " query_source=user_channel 的条目是用户填写渠道的深挖，应优先引用。"
-            " 网页检索条目可作 L2（有 URL）。禁止把未出现的标题/链接写进报告。"
+            "n=本页 SEARCH+TECH 中明确提到该痛点的条数（测评/评论/卖点/专利/标准/展会合成一个 n）。"
+            " 用户填写的痛点是假设，不计入 n。F 是顾问 1–10，不等于 n，禁止 0.3×n。n=0 则未印证、F 留空。"
+            " query_source=user_channel 优先引用。禁止把未出现的标题/链接写进报告。"
         )
     else:
         lines.append(
-            "n=all hits that mention the pain (VOC+patent+competitor). Patents/competitors count as Desirability proof. F is 1-10, never 0.3*n."
-            " Prefer query_source=user_channel (user-specified sites). Web hits may be L2. Do not invent URLs."
+            "n=SEARCH+TECH rows that mention the pain (one n). User-typed pains do not add to n. F is 1-10, not n, not 0.3*n. n=0 => not supported, F blank."
+            " Prefer query_source=user_channel. Do not invent URLs."
         )
     return "\n".join(lines)
 
@@ -846,9 +846,10 @@ def format_tech_block(payload: Dict[str, Any], claims: List[Dict[str, str]], lan
         )
     lines.append("TECH_SEARCH_END")
     lines.append(
-        "只引用以上 URL。专利/竞品同时用于：① Desirability 印证痛点真实；② Feasibility 的 IP 空白与差异化。不能虚构专利号。"
+        "只引用以上 URL。这些条目若标题/摘要提到某痛点，计入该痛点的 n。"
+        " 同时用于：① Desirability 印证；② Feasibility 的 IP 空白与差异化。不能虚构专利号。"
         if lang == "zh"
-        else "Cite only URLs above. Patents/competitors serve both Desirability (pain is real) and Feasibility (IP gap / differentiation). Never invent patent numbers."
+        else "Cite only URLs above. If a row mentions a pain, count it in that pain’s n. Also used for Feasibility IP gap / differentiation. Never invent patent numbers."
     )
     return claim_text + "\n" + "\n".join(lines)
 
