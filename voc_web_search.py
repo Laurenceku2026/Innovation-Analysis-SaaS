@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -459,6 +460,15 @@ _STOP_TOKENS = frozenset(
         "评价",
         "缺点",
         "专利",
+        "power",
+        "tools",
+        "tool",
+        "reduction",
+        "technology",
+        "技术",
+        "系列",
+        "microsoft",
+        "account",
     }
 )
 _JUNK_HOSTS = (
@@ -468,6 +478,8 @@ _JUNK_HOSTS = (
     "merriam-webster.com",
     "powerpoint.cloud.microsoft",
     "app.powerbi.com",
+    "account.microsoft.com",
+    "m365.cloud.microsoft",
     "names.org",
     "uidai.gov.in",
     "skytexhomes.com",
@@ -476,6 +488,14 @@ _JUNK_HOSTS = (
     "fedex.com",
     "spotify.com",
     "carerewritten.com",
+)
+_JUNK_TITLE_MARKERS = (
+    "tv series",
+    "power universe",
+    "microsoft account",
+    "sign in or create",
+    "5th wheel",
+    "landing gear",
 )
 
 
@@ -496,10 +516,23 @@ def _hit_relevant(title: str, snippet: str, url: str, keys: List[str]) -> bool:
     host = (urlparse(url).netloc or "").lower()
     if any(j in host for j in _JUNK_HOSTS):
         return False
+    blob = f"{title} {snippet} {url}".lower()
+    if any(m in blob for m in _JUNK_TITLE_MARKERS):
+        return False
+    if "wikipedia.org" in host and "power tool" not in blob and "电动工具" not in blob:
+        return False
     if not keys:
         return True
-    blob = f"{title} {snippet} {url}".lower()
     return any(k.lower() in blob for k in keys)
+
+
+def _quoted_en_product(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return t
+    if t.startswith('"'):
+        return t
+    return f'"{t}"'
 
 
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
@@ -511,17 +544,24 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
 
-    rows: List[Dict[str, str]] = []
-    with DDGS() as client:
-        for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
-            rows.append(
-                {
-                    "title": (item.get("title") or "").strip(),
-                    "snippet": (item.get("body") or item.get("description") or "").strip(),
-                    "url": (item.get("href") or item.get("url") or "").strip(),
-                }
-            )
-    return rows
+    last_exc: Optional[Exception] = None
+    for attempt in range(3):
+        rows: List[Dict[str, str]] = []
+        try:
+            with DDGS() as client:
+                for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
+                    rows.append(
+                        {
+                            "title": (item.get("title") or "").strip(),
+                            "snippet": (item.get("body") or item.get("description") or "").strip(),
+                            "url": (item.get("href") or item.get("url") or "").strip(),
+                        }
+                    )
+            return rows
+        except Exception as exc:
+            last_exc = exc
+            time.sleep(1.2 * (attempt + 1))
+    raise last_exc or RuntimeError("ddg_failed")
 
 
 def search_market_voc(
@@ -552,7 +592,7 @@ def search_market_voc(
         ),
         (
             "en",
-            product_en or product_zh,
+            _quoted_en_product(product_en or product_zh),
             list(profile["site_hints_en"])[:max_queries_per_lang]
             + list(extra_hints_en or [])[:6],
             profile["region_en"],
@@ -623,25 +663,22 @@ def search_all_markets(
     extras = extras[:4]
     typed_channels = bool((channel_detail or "").strip())
     ch_zh, ch_en = channel_query_hints(channel_detail) if typed_channels else ([], [])
+    pain_zh: List[str] = []
+    pain_en: List[str] = []
+    for term in extras:
+        pain_zh.append("{p} " + term + " 测评")
+        pain_zh.append("{p} " + term + " 缺点")
+        pain_en.append("{p} " + term + " review")
+        pain_en.append("{p} " + term + " problem")
     channel_plan = parse_channel_search_plan(channel_detail) if typed_channels else {"sites": [], "keywords": []}
     for market in markets:
         hits, errors = search_market_voc(
             market,
             product_zh,
             product_en,
-            extra_hints_zh=ch_zh,
-            extra_hints_en=ch_en,
+            extra_hints_zh=ch_zh + pain_zh,
+            extra_hints_en=ch_en + pain_en,
         )
-        for term in extras:
-            more, more_err = search_market_voc(
-                market,
-                term,
-                term,
-                max_per_query=3,
-                max_queries_per_lang=2,
-            )
-            hits.extend(more)
-            errors.extend(more_err)
         tagged = [annotate_hit_bucket(h) for h in hits]
         by_market[market] = tagged
         all_hits.extend(tagged)
@@ -669,7 +706,7 @@ def search_patents_and_competitors(
     queries: List[Tuple[str, str, str, str]] = []  # query, region, lang, purpose
 
     p_zh = (product_zh or product_en or "").strip()
-    p_en = (product_en or product_zh or "").strip()
+    p_en = _quoted_en_product(product_en or product_zh)
     if p_zh:
         queries.extend(
             [
