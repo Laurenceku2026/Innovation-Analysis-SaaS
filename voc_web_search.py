@@ -289,9 +289,54 @@ def _platform_from_url(url: str) -> str:
     return host or "Web"
 
 
+_PATENT_PLATFORMS = frozenset(
+    {
+        "Google Patents",
+        "USPTO",
+        "EPO",
+        "Espacenet",
+        "CNIPA",
+        "SooPAT",
+        "PatSnap",
+        "Lens.org",
+    }
+)
+_VOC_CONTENT_TYPES = frozenset(
+    {"YouTuber/video", "User/editor review", "User complaint", "Web mention"}
+)
+
+# User-filled sales/info channels → DuckDuckGo site: queries (priority over market defaults).
+_CHANNEL_SITE_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("京东", "jd.com", "jingdong", "jd自营", "jd 自营"), "jd.com"),
+    (("天猫", "tmall", "tmall.com"), "tmall.com"),
+    (("淘宝", "taobao", "taobao.com"), "taobao.com"),
+    (("amazon.com", "amazon.co.uk", "amazon.de", "amazon.co.jp", "亚马逊", "amazon"), "amazon.com"),
+    (("youtube", "youtu.be", "油管"), "youtube.com"),
+    (("bilibili", "b站", "哔哩"), "bilibili.com"),
+    (("小红书", "xiaohongshu", "xhs", "rednote"), "xiaohongshu.com"),
+    (("知乎", "zhihu"), "zhihu.com"),
+    (("reddit",), "reddit.com"),
+    (("tiktok",), "tiktok.com"),
+    (("抖音", "douyin"), "douyin.com"),
+    (("trustpilot",), "trustpilot.com"),
+    (("shopee", "虾皮"), "shopee.com"),
+    (("lazada", "来赞达"), "lazada.com"),
+    (("kakaku", "价格网"), "kakaku.com"),
+    (("homedepot", "home depot", "家得宝"), "homedepot.com"),
+    (("lowes", "lowe's", "lowes.com"), "lowes.com"),
+    (("contractortalk",), "contractortalk.com"),
+    (("wirecutter",), "wirecutter.com"),
+    (("微博", "weibo"), "weibo.com"),
+    (("facebook", "fb"), "facebook.com"),
+    (("instagram", "ig"), "instagram.com"),
+)
+
+
 def _content_type(platform: str, title: str, snippet: str) -> str:
     blob = f"{title} {snippet}".lower()
-    if "patent" in platform.lower() or any(w in blob for w in ("patent", "专利", "uspto", "epo", "cnipa")):
+    if platform in _PATENT_PLATFORMS or "patent" in platform.lower() or any(
+        w in blob for w in ("patent", "专利", "uspto", "epo", "cnipa")
+    ):
         return "Patent"
     if platform == "YouTube" or "youtuber" in blob or "vlog" in blob:
         return "YouTuber/video"
@@ -302,6 +347,97 @@ def _content_type(platform: str, title: str, snippet: str) -> str:
     if any(w in blob for w in ("reddit", "complaint", "缺点", "差评", "problem", "issue")):
         return "User complaint"
     return "Web mention"
+
+
+def hit_bucket(hit: Dict[str, str]) -> str:
+    """voc | patent | competitor. Only voc rows enter N (and n) for frequency F."""
+    purpose = (hit.get("purpose") or "").lower()
+    ctype = hit.get("content_type") or ""
+    platform = hit.get("platform") or ""
+    if purpose.startswith("patent") or purpose.endswith("_patent") or ctype == "Patent" or platform in _PATENT_PLATFORMS:
+        return "patent"
+    if "competitor" in purpose or ctype == "Competitor":
+        return "competitor"
+    if ctype in _VOC_CONTENT_TYPES or not ctype:
+        return "voc"
+    if "patent" in ctype.lower():
+        return "patent"
+    return "voc"
+
+
+def annotate_hit_bucket(hit: Dict[str, str]) -> Dict[str, str]:
+    tagged = dict(hit)
+    tagged["bucket"] = hit_bucket(tagged)
+    return tagged
+
+
+def voc_n_from_hits(hits: List[Dict[str, str]] | None) -> int:
+    return sum(1 for hit in (hits or []) if hit_bucket(hit) == "voc")
+
+
+def _tokenize_channel_text(raw: str) -> List[str]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    urls = re.findall(r"https?://[^\s,，;；]+", text, flags=re.I)
+    remainder = re.sub(r"https?://[^\s,，;；]+", " ", text, flags=re.I)
+    parts = re.split(r"[,，;；、|/\n]+", remainder)
+    tokens: List[str] = list(urls)
+    for part in parts:
+        token = re.sub(r"^(例如|比如|e\.g\.|eg)[:：]\s*", "", part.strip(), flags=re.I)
+        token = token.strip(" 。.，,")
+        if token:
+            tokens.append(token)
+    return tokens
+
+
+def parse_channel_search_plan(channel_detail: str) -> Dict[str, Any]:
+    """Turn free-text channel details into prioritized site: / keyword queries."""
+    sites: List[str] = []
+    keywords: List[str] = []
+    seen_sites: set[str] = set()
+    seen_kw: set[str] = set()
+    for token in _tokenize_channel_text(channel_detail):
+        lower = token.lower()
+        host = ""
+        url_match = re.search(r"https?://[^\s,，;；]+", token, re.I)
+        if url_match:
+            host = (urlparse(url_match.group(0)).netloc or "").lower()
+            host = host[4:] if host.startswith("www.") else host
+        if not host:
+            for aliases, site in _CHANNEL_SITE_RULES:
+                if any(alias in lower for alias in aliases):
+                    host = site
+                    break
+        if host and host not in seen_sites and "." in host:
+            seen_sites.add(host)
+            sites.append(host)
+            continue
+        compact = re.sub(r"\s+", " ", token).strip()
+        if compact.lower() in {"https", "http", "www"} or compact.endswith(":"):
+            continue
+        if compact and compact.lower() not in seen_kw and 2 <= len(compact) <= 40:
+            seen_kw.add(compact.lower())
+            keywords.append(compact)
+    return {"sites": sites[:8], "keywords": keywords[:6]}
+
+
+def channel_query_hints(channel_detail: str) -> Tuple[List[str], List[str]]:
+    plan = parse_channel_search_plan(channel_detail)
+    zh: List[str] = []
+    en: List[str] = []
+    for site in plan["sites"]:
+        zh.append("{{p}} site:{0} 评价".format(site))
+        zh.append("{{p}} site:{0} 缺点".format(site))
+        en.append("{{p}} site:{0} review".format(site))
+        en.append("{{p}} site:{0} problem".format(site))
+    for kw in plan["keywords"]:
+        zh.append("{{p}} {0} 评价".format(kw))
+        en.append("{{p}} {0} review".format(kw))
+    # format() later uses {p}; restore single braces
+    zh = [h.replace("{{p}}", "{p}") for h in zh][:10]
+    en = [h.replace("{{p}}", "{p}") for h in en][:10]
+    return zh, en
 
 
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
@@ -333,6 +469,9 @@ def search_market_voc(
     *,
     max_per_query: int = 5,
     max_queries_per_lang: int = 5,
+    extra_hints_zh: List[str] | None = None,
+    extra_hints_en: List[str] | None = None,
+    query_source: str = "market_default",
 ) -> Tuple[List[Dict[str, str]], List[str]]:
     """Return (hits, errors). Always attempts Chinese + English queries."""
     profile = MARKET_PROFILES[normalize_market_key(market_name)]
@@ -341,17 +480,32 @@ def search_market_voc(
     seen = set()
 
     jobs = [
-        ("zh", product_zh or product_en, profile["site_hints_zh"], profile["region_zh"]),
-        ("en", product_en or product_zh, profile["site_hints_en"], profile["region_en"]),
+        (
+            "zh",
+            product_zh or product_en,
+            list(extra_hints_zh or []) + list(profile["site_hints_zh"]),
+            profile["region_zh"],
+            len(extra_hints_zh or []),
+        ),
+        (
+            "en",
+            product_en or product_zh,
+            list(extra_hints_en or []) + list(profile["site_hints_en"]),
+            profile["region_en"],
+            len(extra_hints_en or []),
+        ),
     ]
-    for query_lang, product, hints, region in jobs:
+    for query_lang, product, hints, region, n_priority in jobs:
         product = (product or "").strip()
         if not product:
             continue
-        for hint in hints[:max_queries_per_lang]:
+        cap = min(len(hints), n_priority + max_queries_per_lang)
+        for idx, hint in enumerate(hints[:cap]):
             query = hint.format(p=product)
+            source = "user_channel" if idx < n_priority else query_source
+            per_query = max_per_query + 1 if source == "user_channel" else max_per_query
             try:
-                results = _ddg_search(query, region, max_per_query)
+                results = _ddg_search(query, region, per_query)
             except Exception as exc:
                 errors.append(f"{market_name}/{query_lang}: {exc}")
                 continue
@@ -363,16 +517,21 @@ def search_market_voc(
                 seen.add(key)
                 platform = _platform_from_url(url)
                 hits.append(
-                    {
-                        "market": market_name,
-                        "query_lang": query_lang,
-                        "query": query,
-                        "platform": platform,
-                        "content_type": _content_type(platform, item.get("title") or "", item.get("snippet") or ""),
-                        "title": item.get("title") or "",
-                        "snippet": item.get("snippet") or "",
-                        "url": url,
-                    }
+                    annotate_hit_bucket(
+                        {
+                            "market": market_name,
+                            "query_lang": query_lang,
+                            "query": query,
+                            "query_source": source,
+                            "platform": platform,
+                            "content_type": _content_type(
+                                platform, item.get("title") or "", item.get("snippet") or ""
+                            ),
+                            "title": item.get("title") or "",
+                            "snippet": item.get("snippet") or "",
+                            "url": url,
+                        }
+                    )
                 )
     return hits, errors
 
@@ -382,27 +541,46 @@ def search_all_markets(
     product_zh: str,
     product_en: str,
     extra_terms: List[str] | None = None,
+    channel_detail: str = "",
 ) -> Dict[str, Any]:
     all_hits: List[Dict[str, str]] = []
     all_errors: List[str] = []
     by_market: Dict[str, List[Dict[str, str]]] = {}
     extras = [t.strip() for t in (extra_terms or []) if t and t.strip()][:4]
+    ch_zh, ch_en = channel_query_hints(channel_detail)
+    channel_plan = parse_channel_search_plan(channel_detail)
     for market in markets:
-        hits, errors = search_market_voc(market, product_zh, product_en)
+        hits, errors = search_market_voc(
+            market,
+            product_zh,
+            product_en,
+            extra_hints_zh=ch_zh,
+            extra_hints_en=ch_en,
+        )
         for term in extras:
             more, more_err = search_market_voc(
-                market, term, term, max_per_query=3, max_queries_per_lang=2
+                market,
+                term,
+                term,
+                max_per_query=3,
+                max_queries_per_lang=2,
+                extra_hints_zh=ch_zh[:4],
+                extra_hints_en=ch_en[:4],
             )
             hits.extend(more)
             errors.extend(more_err)
-        by_market[market] = hits
-        all_hits.extend(hits)
+        tagged = [annotate_hit_bucket(h) for h in hits]
+        by_market[market] = tagged
+        all_hits.extend(tagged)
         all_errors.extend(errors)
+    voc_n = voc_n_from_hits(all_hits)
     return {
         "n": len(all_hits),
+        "voc_n": voc_n,
         "hits": all_hits,
         "by_market": by_market,
         "errors": all_errors,
+        "channel_plan": channel_plan,
     }
 
 
@@ -472,19 +650,21 @@ def search_patents_and_competitors(
             seen.add(key)
             platform = _platform_from_url(url)
             hits.append(
-                {
-                    "market": "tech_landscape",
-                    "query_lang": query_lang,
-                    "query": query,
-                    "platform": platform,
-                    "content_type": purpose if purpose.startswith("claim") else _content_type(
-                        platform, item.get("title") or "", item.get("snippet") or ""
-                    ),
-                    "purpose": purpose,
-                    "title": item.get("title") or "",
-                    "snippet": item.get("snippet") or "",
-                    "url": url,
-                }
+                annotate_hit_bucket(
+                    {
+                        "market": "tech_landscape",
+                        "query_lang": query_lang,
+                        "query": query,
+                        "platform": platform,
+                        "content_type": purpose if purpose.startswith("claim") else _content_type(
+                            platform, item.get("title") or "", item.get("snippet") or ""
+                        ),
+                        "purpose": purpose,
+                        "title": item.get("title") or "",
+                        "snippet": item.get("snippet") or "",
+                        "url": url,
+                    }
+                )
             )
     return {"n": len(hits), "hits": hits, "errors": errors}
 
@@ -504,10 +684,29 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
             + " Do not invent URLs or counts; treat missing web VOC as L4."
         )
 
-    lines = [f"WEB_VOC_COUNT={payload['n']}", "WEB_VOC_ITEMS_START"]
+    voc_n = int(payload.get("voc_n") if payload.get("voc_n") is not None else voc_n_from_hits(payload.get("hits")))
+    excluded = int(payload.get("n") or 0) - voc_n
+    plan = payload.get("channel_plan") or {}
+    lines = [
+        f"WEB_SEARCH_TOTAL={payload['n']}",
+        f"VOC_N_FOR_F={voc_n}",
+        f"EXCLUDED_FROM_N_PATENT_OR_COMPETITOR={excluded}",
+        "N for F/r is VOC_N_FOR_F only (reviews, complaints, forums, videos, web mentions).",
+        "Do not count bucket=patent or bucket=competitor in n or N.",
+        "WEB_VOC_ITEMS_START",
+    ]
+    if plan.get("sites") or plan.get("keywords"):
+        lines.insert(
+            3,
+            "USER_CHANNEL_PRIORITY sites={sites} keywords={kws}".format(
+                sites=",".join(plan.get("sites") or []),
+                kws=" / ".join(plan.get("keywords") or []),
+            ),
+        )
     for i, hit in enumerate(payload["hits"][:180], start=1):
         lines.append(
-            f"{i}. market={hit['market']} lang={hit['query_lang']} "
+            f"{i}. bucket={hit.get('bucket') or hit_bucket(hit)} source={hit.get('query_source') or ''} "
+            f"market={hit['market']} lang={hit['query_lang']} "
             f"platform={hit['platform']} type={hit['content_type']} "
             f"title={hit['title']} snippet={hit['snippet'][:220]} url={hit['url']}"
         )
@@ -515,9 +714,16 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
     if payload.get("errors"):
         lines.append("WEB_VOC_ERRORS=" + " | ".join(payload["errors"][:12]))
     if lang == "zh":
-        lines.append("网页检索条目可作 L2（有 URL）。禁止把未出现的标题/链接写进报告。")
+        lines.append(
+            "算 F 时 N=VOC_N_FOR_F，n=其中 bucket=voc 且提到该痛点的条数。专利/竞品只用于 Feasibility，不进 F。"
+            " query_source=user_channel 的条目是用户填写渠道的深挖，应优先引用。"
+            " 网页检索条目可作 L2（有 URL）。禁止把未出现的标题/链接写进报告。"
+        )
     else:
-        lines.append("Web hits may be graded L2 (have URLs). Do not add titles/links that are not listed.")
+        lines.append(
+            "For F, N=VOC_N_FOR_F and n=bucket=voc hits that mention the pain. Patents/competitors are for Feasibility only."
+            " Prefer query_source=user_channel (user-specified sites). Web hits may be L2. Do not invent URLs."
+        )
     return "\n".join(lines)
 
 
@@ -571,12 +777,27 @@ def extract_json_object(text: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def format_channel_guide(markets: List[str], lang: str) -> str:
+def format_channel_guide(markets: List[str], lang: str, channel_detail: str = "") -> str:
     lines = []
+    plan = parse_channel_search_plan(channel_detail)
     if lang == "zh":
         lines.append("【信息获取渠道清单——必须按市场尽量列全，下列为最低覆盖，可再补充同类渠道】")
+        if plan["sites"] or plan["keywords"]:
+            lines.append(
+                "【用户填写、已优先深挖】站点："
+                + ("、".join(plan["sites"]) or "无")
+                + "；关键词："
+                + ("、".join(plan["keywords"]) or "无")
+            )
     else:
         lines.append("[Information-channel checklist — cover at least these per market, then add similar local channels]")
+        if plan["sites"] or plan["keywords"]:
+            lines.append(
+                "[User channels, searched first] sites: "
+                + (", ".join(plan["sites"]) or "none")
+                + "; keywords: "
+                + (", ".join(plan["keywords"]) or "none")
+            )
     for market in markets:
         profile = MARKET_PROFILES[normalize_market_key(market)]
         label = profile["label_zh"] if lang == "zh" else profile["label_en"]
