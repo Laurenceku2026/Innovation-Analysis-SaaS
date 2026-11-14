@@ -329,7 +329,7 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 硬性规则：
 1. 禁止编造 URL、专利号、竞品型号、条数。只能引用 SEARCH_BLOCK / TECH_BLOCK 中的条目。VOC 证据必须来自网页检索，用户没有粘贴 VOC。
 2. 用户填写的「痛点」和「技术创新」是假设/声称，不是结论。必须全部列出，并用检索结果判定：印证 / 部分印证 / 未印证 / 反证。未印证的假设不得抬高 D 或 T。
-3. 痛点优先级见 <<<SCORE_RUBRIC>>>。**F = min(10, 0.3×n)**，n 为该痛点 VOC 命中条数（不含专利/竞品）。S/U/W 为 1–10。P=0.3F+0.3S+0.2U+0.2W。仅对「印证/部分印证」或「检索新发现」的痛点计算可入选的 P。创新机会表：Top {top_n} + 所有 P≥{pain_threshold}。打分表必须列出 n、F、S、U、W、P。
+3. 痛点优先级见 <<<SCORE_RUBRIC>>>。F 是 1–10 的「提及有多密」，**不是** 0.3×条数，也不是 r/0.30。网页检索只是抽样：行业里公认、多市场反复出现的痛点（如电动工具振动/噪音）F 应在 6–8，不要因为 n 只有十几条就打 2 分。P=0.3F+0.3S+0.2U+0.2W。仅对「印证/部分印证」或「检索新发现」的痛点计算可入选的 P。创新机会表：Top {top_n} + 所有 P≥{pain_threshold}。打分表列出 n（VOC 条数，不含专利/竞品）、F、S、U、W、P。
 4. Viability 分 V：有证据时 V=0.4×W + 0.3×可触达/渠道 + 0.3×单位经济；缺证据写未知。
 5. Feasibility 分 T：T=0.4×技术就绪 + 0.3×IP空白 + 0.3×与竞品可差异化。用户声称的技术若专利/竞品已占，T 必须下调。
 6. 创新指数 I=0.4×D + 0.3×V + 0.3×T（D/V/T 各 1–10）。三支柱都高才建议投入。
@@ -346,7 +346,7 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 ## D1 用户痛点假设核对（必须覆盖全部用户填写项）
 用户认为的痛点如下（假设，待检索证明）：
 {user_pains}
-列：用户原话、检索判定、n（该痛点 VOC 命中条数，不含专利/竞品）、F=min(10, 0.3×n)、S、U、W、P、是否≥阈值 {pain_threshold}、证据等级、引用。未印证则 P 不可用于抬高 D。禁止把专利/竞品算进 n。
+列：用户原话、检索判定、n（该痛点 VOC 命中条数，不含专利/竞品）、F(1-10 提及密度，禁止用 0.3×n)、S、U、W、P、是否≥阈值 {pain_threshold}、证据等级、引用。未印证则 P 不可用于抬高 D。禁止把专利/竞品算进 n。
 
 ## D1b 产品描述补充主张
 产品简要描述：{product_description}
@@ -436,7 +436,7 @@ Desirability = pain points and VOC. Viability = commercial value of the innovati
 Hard rules:
 1. Never invent URLs, patent numbers, competitor SKUs, or counts. Cite only SEARCH_BLOCK / TECH_BLOCK. VOC comes from web search only; the user did not paste VOC.
 2. User-entered pains and technical innovations are HYPOTHESES/CLAIMS, not conclusions. List every one and verdict: supported / partial / not found / contradicted. Unsupported claims must not inflate D or T.
-3. Pain priority: see <<<SCORE_RUBRIC>>>. **F = min(10, 0.3×n)** where n is VOC hits for that pain (exclude patents/competitors). P=0.3F+0.3S+0.2U+0.2W. Only supported/partial or search-discovered pains may get a computable P. Table: Top {top_n} plus all P>={pain_threshold}. Scoring tables MUST show n, F, S, U, W, P.
+3. Pain priority: see <<<SCORE_RUBRIC>>>. F is 1–10 mention density, **not** 0.3×count and **not** r/0.30. Web search is a sample: an industry-known pain (e.g. power-tool vibration/noise) that repeats across markets should get F around 6–8, not 2 just because n is a dozen snippets. P=0.3F+0.3S+0.2U+0.2W. Only supported/partial or search-discovered pains may get a computable P. Table: Top {top_n} plus all P>={pain_threshold}. Show n (VOC only), F, S, U, W, P.
 4. Viability V = 0.4*WTP + 0.3*reach/channel + 0.3*unit economics when evidence exists.
 5. Feasibility T = 0.4*tech readiness + 0.3*IP white space + 0.3*differentiability. If patents/competitors already own the claimed tech, lower T.
 6. Innovation index I = 0.4*D + 0.3*V + 0.3*T (each pillar 1–10). Recommend development only if all three are strong.
@@ -450,7 +450,7 @@ Then a hypothesis-check table: user pain hypotheses, user tech claims, search ve
 ## D1 Check every user-stated pain HYPOTHESIS
 User-believed pains (hypotheses to prove or disprove):
 {user_pains}
-Columns: user wording, verdict, n (VOC hits for this pain; exclude patents/competitors), F=min(10, 0.3×n), S, U, W, P, ≥threshold {pain_threshold}?, evidence grade, citation.
+Columns: user wording, verdict, n (VOC hits; exclude patents/competitors), F (1–10 density, never 0.3×n), S, U, W, P, ≥threshold {pain_threshold}?, evidence grade, citation.
 Unsupported rows must not raise D.
 ## D1b Extra claims from the short description only if not already in the pain box.
 Product description: {product_description}
@@ -518,11 +518,11 @@ TEXTS = {
 
 **如何量化创新**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。
-- **F 频次分**：**F = min(10, 0.3×n)**。n = 该痛点在 VOC（评论/投诉/论坛/测评/视频）中的命中条数，**不含专利和竞品**。例如 n=10 → F=3；n=20 → F=6；n≥34 → F=10。""",
-        "sidebar_suw": """- **S 严重度分（1–10）**：看这 n 条里后果有多糟（安全/退货/不可用→高；轻微抱怨→低）。没有后果用语 → 未知。
-- **U 未满足分（1–10）**：这 n 条里有多少在说现有产品/竞品没解决。u=未解决条数/n，**U = min(10, max(1, round(10×u)))**。看不出 → 未知。
-- **W 付费意愿分（1–10）**：只看是否出现愿加价、会买、换品、嫌贵但仍要解决。完全没有价格/购买用语 → 未知。
-- 任一维未知则 **P 不可计算**。机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。""",
+- **F 频次分（1–10）**：看 VOC 里这个问题提得有多密、多少人会遇到，**不是** 条数×0.3，也不是 r/0.30。检索只是抽样。行业公认、多市场反复出现的痛点（如电动工具振动/噪音）F 一般 **6–8**。n 只作证据条数（不含专利/竞品），不直接当 F。""",
+        "sidebar_suw": """- **S 严重度分（1–10）**：后果有多糟（安全/健康/退货更高）。
+- **U 未满足分（1–10）**：现有产品解决得多差，反复吐槽则高。
+- **W 付费意愿分（1–10）**：有溢价线索用线索；没有时专业工具可给 4–6，避免整个 D 算不出。
+- 机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。""",
         "sidebar_index": """- Desirability D：已验证痛点的 P 与证据等级
 - Viability **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济**
 - Feasibility **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×相对竞品可差异化**
@@ -621,11 +621,11 @@ TEXTS = {
 
 **How innovation is quantified**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**.
-- **F frequency**: **F = min(10, 0.3×n)**. n = VOC hits for that pain (reviews/complaints/forums/videos only; **not patents or competitors**). Example: n=10 → F=3; n=20 → F=6; n≥34 → F=10.""",
-        "sidebar_suw": """- **S severity (1–10)**: how bad the consequence is in those n snippets (safety/returns/unusable high; mild gripe low). No consequence language → unknown.
-- **U unmet (1–10)**: share of the n snippets saying current/competitor products fail. u = unsolved/n, **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown.
-- **W WTP (1–10)**: only if text shows pay-more / would-buy / switch / too-expensive-but-need-it. No price or purchase language → unknown.
-- If any factor is unknown, **P is not computable**. Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.""",
+- **F frequency (1–10)**: how common the pain is in VOC — **not** 0.3×count, **not** r/0.30. Search is a sample. An industry-known pain (e.g. power-tool vibration/noise) repeating across markets is typically **F = 6–8**. n is evidence count (VOC only), not F itself.""",
+        "sidebar_suw": """- **S severity (1–10)**: how bad the consequence is (safety/health/returns higher).
+- **U unmet (1–10)**: how poorly current products solve it; higher if complaints repeat.
+- **W WTP (1–10)**: use premium clues; if none, 4–6 for pro tools so D stays computable.
+- Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.""",
         "sidebar_index": """- Desirability D: P and evidence grade of *verified* pains
 - Viability **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics**
 - Feasibility **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability vs competitors**
@@ -763,26 +763,30 @@ def score_rubric_markdown(lang: str, search_n: int, freq_full: float = 0.30) -> 
     n_total = int(search_n or 0)
     _ = freq_full
     if lang == "zh":
-        return f"""本次 VOC（评论/投诉/论坛/测评/视频）共 **{n_total}** 条；**专利与竞品不算进 n**。对每一条痛点，n = SEARCH_BLOCK 中 **bucket=voc** 且明确提到该痛点的条数（禁止虚构 n）。
+        return f"""本次 VOC 共 **{n_total}** 条（评论/投诉/论坛/测评/视频；专利/竞品不算进 n）。n 只作证据条数。
 
-| 符号 | 数据怎么来 | 如何打分 |
-|------|------------|----------|
-| **F 频次分** | 该痛点 VOC 提及条数 n | **F = min(10, 0.3×n)**。n=10→3；n=20→6；n≥34→10 |
-| **S 严重度分** | 这 n 条 VOC 的后果用语 | 10 安全/伤人/财产损坏；8 退货/不能用；6 经常费时；4 轻度抱怨；2 口味偏好。无后果用语 → 未知 |
-| **U 未满足分** | 这 n 条里说现有产品/竞品没解决的比例 u | **U = min(10, max(1, round(10×u)))**。看不出 → 未知 |
-| **W 付费意愿分** | 这 n 条里的加价/会买/换品/嫌贵仍要解决 | 10 明确愿加价或已为替代方案付钱；7 解决了就会买；4 仅暗示有价值。全无价格/购买用语 → 未知 |
+**F 是 1–10 的提及密度，禁止 F=0.3×n，禁止用 r/0.30。** 检索是抽样不是普查。多市场、多渠道反复出现的行业痛点（电动工具振动、噪音、手麻等）F 应 **6–8**，S 若涉及健康/疲劳/精度应 **7–9**。不要因为 n 只有十几条就把 F 打成 2。
 
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。S/U/W 任一维为未知则 P=不可计算。报告必须给出 n、F、S、U、W、P。"""
-    return f"""VOC rows this run **{n_total}** (reviews/complaints/forums/videos). **Do not count patents or competitors in n.** For each pain, n = SEARCH_BLOCK **bucket=voc** hits that mention it (do not invent n).
-
-| Symbol | Data | Score |
+| 符号 | 含义 | 打分 |
 |------|------|------|
-| **F frequency** | VOC mention count n | **F = min(10, 0.3×n)**. n=10→3; n=20→6; n≥34→10 |
-| **S severity** | consequence language in those n hits | 10 safety/injury/property; 8 return/unusable; 6 recurring time-cost; 4 mild gripe; 2 preference. No consequence words → unknown |
-| **U unmet** | share u of the n hits saying current/competitor products fail | **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown |
-| **W WTP** | pay-more / would-buy / switch language in those n hits | 10 explicit extra pay or already paying a workaround; 7 would buy if solved; 4 value implied only. No price/purchase language → unknown |
+| **F 频次** | 多少人遇到、提及有多密 | 有 VOC 用相对提及密度 1–10；无 VOC=未知 |
+| **S 严重度** | 后果有多糟 | 退货/安全/健康更高 |
+| **U 未满足** | 现有产品解决得多差 | 反复吐槽更高 |
+| **W 付费意愿** | 是否愿意为解决它付钱 | 有溢价线索用线索；没有时按专业工具品类给 4–6，不要让整个 D 不可计算 |
 
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. If S/U/W is unknown, P is not computable. Tables must show n, F, S, U, W, P."""
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。Desirability D 取已印证主痛点的 P（约 1–10）。报告给出 n、F、S、U、W、P、D。"""
+    return f"""VOC rows this run **{n_total}** (reviews/complaints/forums/videos; patents/competitors not in n). n is evidence count only.
+
+**F is 1–10 mention density. Never F=0.3×n. Never r/0.30.** Search is a sample. An industry-known pain repeating across markets (power-tool vibration, noise, hand numbness) should get **F = 6–8**, and **S = 7–9** if health/fatigue/accuracy is involved. Do not score F=2 just because n is a dozen snippets.
+
+| Symbol | Meaning | Scoring |
+|------|------|------|
+| **F frequency** | How many people hit it | 1–10 relative density from VOC; unknown only if no VOC |
+| **S severity** | How bad the consequence is | Higher for returns/safety/health |
+| **U unmet** | How poorly current products solve it | Higher if repeated complaints |
+| **W WTP** | Would users pay more to fix it | Use premium clues; if none, 4–6 for pro tools — do not make D incomputable |
+
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. Desirability D ≈ P of the main verified pain. Show n, F, S, U, W, P, D."""
 
 
 def scoring_method_markdown(
@@ -876,7 +880,7 @@ def report_header_markdown(
 | 其中 VOC（计 n，不含专利/竞品） | {voc_n_for_f if voc_n_for_f is not None else search_n} |
 | 分析框架 | Desirability / Viability / Feasibility |
 | 痛点纳入阈值 P | {pain_threshold:g} |
-| 频次分 F | min(10, 0.3×n) |
+| 频次分 F | 1–10 提及密度（不是 0.3×n） |
 | 至少输出机会数 | Top {top_n} |
 | 报告日期 | {current_date} |
 | 分析人 | {analyst_info} |
@@ -907,7 +911,7 @@ def report_header_markdown(
 | VOC rows (n excludes patents/competitors) | {voc_n_for_f if voc_n_for_f is not None else search_n} |
 | Framework | Desirability / Viability / Feasibility |
 | Pain inclusion threshold P | {pain_threshold:g} |
-| Frequency F | min(10, 0.3×n) |
+| Frequency F | 1–10 mention density (not 0.3×n) |
 | Minimum opportunities | Top {top_n} |
 | Report date | {current_date} |
 | Analyst | {analyst_info} |
@@ -1044,7 +1048,7 @@ def build_voc_excel_bytes(
         ],
         "value": [
             "P=0.3F+0.3S+0.2U+0.2W",
-            f"F=min(10, 0.3*n), n=VOC mentions only (no patents/competitors), voc_rows={meta.get('voc_n_for_f')}",
+            f"F=1-10 mention density from VOC (not 0.3*n), voc_rows={meta.get('voc_n_for_f')}",
             "Severity 1-10",
             "Unmet need 1-10",
             "Willingness to pay 1-10",
@@ -1425,9 +1429,9 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         voc_n_shown = st.session_state.get("innovation_voc_n")
         if search_n is not None:
             if lang == "zh":
-                cap = f"网页检索 {search_n} 条；其中 VOC {voc_n_shown if voc_n_shown is not None else search_n} 条（F=min(10, 0.3×n)，专利/竞品不计入 n）"
+                cap = f"网页检索 {search_n} 条；其中 VOC {voc_n_shown if voc_n_shown is not None else search_n} 条（F=1–10 提及密度，不是 0.3×n）"
             else:
-                cap = f"Web hits {search_n}; VOC {voc_n_shown if voc_n_shown is not None else search_n} (F=min(10, 0.3×n); patents/competitors excluded from n)"
+                cap = f"Web hits {search_n}; VOC {voc_n_shown if voc_n_shown is not None else search_n} (F=1–10 density, not 0.3×n)"
             st.caption(cap)
         st.markdown("---")
         st.markdown(report)
