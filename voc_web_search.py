@@ -689,10 +689,9 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
     plan = payload.get("channel_plan") or {}
     lines = [
         f"WEB_SEARCH_TOTAL={payload['n']}",
-        f"VOC_N_FOR_F={voc_n}",
-        f"EXCLUDED_FROM_N_PATENT_OR_COMPETITOR={excluded}",
-        "N for F/r is VOC_N_FOR_F only (reviews, complaints, forums, videos, web mentions).",
-        "Do not count bucket=patent or bucket=competitor in n or N.",
+        f"VOC_COUNT={voc_n}",
+        f"EXCLUDED_PATENT_OR_COMPETITOR={excluded}",
+        "F = min(10, 0.3*n). n = bucket=voc hits that mention the pain. Do not count patent/competitor rows in n.",
         "WEB_VOC_ITEMS_START",
     ]
     if plan.get("sites") or plan.get("keywords"):
@@ -715,13 +714,13 @@ def format_search_block(payload: Dict[str, Any], lang: str) -> str:
         lines.append("WEB_VOC_ERRORS=" + " | ".join(payload["errors"][:12]))
     if lang == "zh":
         lines.append(
-            "算 F 时 N=VOC_N_FOR_F，n=其中 bucket=voc 且提到该痛点的条数。专利/竞品只用于 Feasibility，不进 F。"
+            "F=min(10, 0.3×n)，n=bucket=voc 且提到该痛点的条数。专利/竞品只用于 Feasibility，不进 n。"
             " query_source=user_channel 的条目是用户填写渠道的深挖，应优先引用。"
             " 网页检索条目可作 L2（有 URL）。禁止把未出现的标题/链接写进报告。"
         )
     else:
         lines.append(
-            "For F, N=VOC_N_FOR_F and n=bucket=voc hits that mention the pain. Patents/competitors are for Feasibility only."
+            "F=min(10, 0.3*n); n=bucket=voc hits that mention the pain. Patents/competitors are for Feasibility only."
             " Prefer query_source=user_channel (user-specified sites). Web hits may be L2. Do not invent URLs."
         )
     return "\n".join(lines)
