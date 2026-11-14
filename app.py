@@ -23,7 +23,6 @@ from voc_web_search import (
     format_tech_block,
     search_all_markets,
     search_patents_and_competitors,
-    voc_n_from_hits,
 )
 from portal_enterprise_ui import (
     ensure_enterprise_session_defaults,
@@ -1318,9 +1317,13 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                     search_block = format_search_block(search_payload, lang)
                     tech_block = format_tech_block(tech_payload, claims, lang)
                     voc_n_for_f = int(
-                        search_payload.get("voc_n")
+                        search_payload["voc_n"]
                         if search_payload.get("voc_n") is not None
-                        else voc_n_from_hits(search_payload.get("hits"))
+                        else sum(
+                            1
+                            for hit in (search_payload.get("hits") or [])
+                            if (hit.get("bucket") or "") == "voc"
+                        )
                     )
                     channel_guide = format_channel_guide(markets, lang, channel_detail or "")
                     template = REPORT_PROMPT_ZH if lang == "zh" else REPORT_PROMPT_EN

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -306,7 +306,7 @@ _VOC_CONTENT_TYPES = frozenset(
 )
 
 # User-filled sales/info channels → DuckDuckGo site: queries (priority over market defaults).
-_CHANNEL_SITE_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+_CHANNEL_SITE_RULES = (
     (("京东", "jd.com", "jingdong", "jd自营", "jd 自营"), "jd.com"),
     (("天猫", "tmall", "tmall.com"), "tmall.com"),
     (("淘宝", "taobao", "taobao.com"), "taobao.com"),
@@ -323,7 +323,7 @@ _CHANNEL_SITE_RULES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
     (("lazada", "来赞达"), "lazada.com"),
     (("kakaku", "价格网"), "kakaku.com"),
     (("homedepot", "home depot", "家得宝"), "homedepot.com"),
-    (("lowes", "lowe's", "lowes.com"), "lowes.com"),
+    (("lowes", "lowes.com"), "lowes.com"),
     (("contractortalk",), "contractortalk.com"),
     (("wirecutter",), "wirecutter.com"),
     (("微博", "weibo"), "weibo.com"),
@@ -371,7 +371,7 @@ def annotate_hit_bucket(hit: Dict[str, str]) -> Dict[str, str]:
     return tagged
 
 
-def voc_n_from_hits(hits: List[Dict[str, str]] | None) -> int:
+def voc_n_from_hits(hits: Optional[List[Dict[str, str]]] = None) -> int:
     return sum(1 for hit in (hits or []) if hit_bucket(hit) == "voc")
 
 
@@ -395,8 +395,8 @@ def parse_channel_search_plan(channel_detail: str) -> Dict[str, Any]:
     """Turn free-text channel details into prioritized site: / keyword queries."""
     sites: List[str] = []
     keywords: List[str] = []
-    seen_sites: set[str] = set()
-    seen_kw: set[str] = set()
+    seen_sites = set()
+    seen_kw = set()
     for token in _tokenize_channel_text(channel_detail):
         lower = token.lower()
         host = ""
@@ -469,8 +469,8 @@ def search_market_voc(
     *,
     max_per_query: int = 5,
     max_queries_per_lang: int = 5,
-    extra_hints_zh: List[str] | None = None,
-    extra_hints_en: List[str] | None = None,
+    extra_hints_zh: Optional[List[str]] = None,
+    extra_hints_en: Optional[List[str]] = None,
     query_source: str = "market_default",
 ) -> Tuple[List[Dict[str, str]], List[str]]:
     """Return (hits, errors). Always attempts Chinese + English queries."""
@@ -540,7 +540,7 @@ def search_all_markets(
     markets: List[str],
     product_zh: str,
     product_en: str,
-    extra_terms: List[str] | None = None,
+    extra_terms: Optional[List[str]] = None,
     channel_detail: str = "",
 ) -> Dict[str, Any]:
     all_hits: List[Dict[str, str]] = []
