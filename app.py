@@ -331,7 +331,7 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 硬性规则：
 1. 禁止编造 URL、专利号、竞品型号、条数。只能引用 SEARCH_BLOCK / TECH_BLOCK 中的条目。VOC 证据必须来自网页检索，用户没有粘贴 VOC。
 2. 用户填写的「痛点」和「技术创新」是假设/声称，不是结论。必须全部列出，并用检索结果判定：印证 / 部分印证 / 未印证 / 反证。未印证的假设不得抬高 D 或 T。
-3. 痛点优先级见 <<<SCORE_RUBRIC>>>。F 是 1–10 的「问题有多普遍」，**不是** 0.3×条数。**专利和竞品必须计入 Desirability 印证**：减振/降噪专利、竞品已做防振防噪，说明行业承认这是痛点，不能因为 VOC 筛选后 n=0 就判「痛点不存在」。n = VOC + 专利 + 竞品中提到该痛点的条数（请分列 n_voc / n_patent / n_competitor）。网页检索是抽样：行业公认痛点 F 应 6–8。P=0.3F+0.3S+0.2U+0.2W。
+3. 痛点优先级见 <<<SCORE_RUBRIC>>>。F 由模型根据 **SEARCH_BLOCK/TECH_BLOCK 里实际命中** 判断 1–10（有多普遍），**不是** 0.3×n，也**禁止**用训练知识/行业常识在 n合计=0 时填 F=6–8。n = 检索条目中明确提到该痛点的条数（分列 n_voc/n_patent/n_competitor）。**n合计=0 → F/S/U/W 一律「未知」，P 不可计算，不得用常识把 D 打成 6 分。** 有命中时专利/竞品计入印证。P=0.3F+0.3S+0.2U+0.2W。
 4. Viability 分 V：有证据时 V=0.4×W + 0.3×可触达/渠道 + 0.3×单位经济；缺证据写未知。
 5. Feasibility 分 T：T=0.4×技术就绪 + 0.3×IP空白 + 0.3×与竞品可差异化。用户声称的技术若专利/竞品已占，T 必须下调。
 6. 创新指数 I=0.4×D + 0.3×V + 0.3×T（D/V/T 各 1–10）。三支柱都高才建议投入。
@@ -438,7 +438,7 @@ Desirability = pain points and VOC. Viability = commercial value of the innovati
 Hard rules:
 1. Never invent URLs, patent numbers, competitor SKUs, or counts. Cite only SEARCH_BLOCK / TECH_BLOCK. VOC comes from web search only; the user did not paste VOC.
 2. User-entered pains and technical innovations are HYPOTHESES/CLAIMS, not conclusions. List every one and verdict: supported / partial / not found / contradicted. Unsupported claims must not inflate D or T.
-3. Pain priority: see <<<SCORE_RUBRIC>>>. F is 1–10 how common the problem is, **not** 0.3×count. **Patents and competitors MUST count as Desirability proof**: vibration/noise patents and rival anti-vibe features mean the industry already treats this as a real pain. Do not conclude “pain n=0 / unsupported” just because VOC-only rows are empty. n = VOC + patent + competitor hits that mention the pain (show n_voc / n_patent / n_competitor). Sampled web search: industry-known pains F≈6–8. P=0.3F+0.3S+0.2U+0.2W.
+3. Pain priority: see <<<SCORE_RUBRIC>>>. F is a 1–10 judgment from **actual SEARCH_BLOCK/TECH_BLOCK hits**, not 0.3×n, and **not** training-data “industry common sense” when n_total=0. n = hits that mention the pain (n_voc / n_patent / n_competitor). **If n_total=0, F/S/U/W = unknown, P is not computable; do not invent D≈6.** When hits exist, patents/competitors count as proof. P=0.3F+0.3S+0.2U+0.2W.
 4. Viability V = 0.4*WTP + 0.3*reach/channel + 0.3*unit economics when evidence exists.
 5. Feasibility T = 0.4*tech readiness + 0.3*IP white space + 0.3*differentiability. If patents/competitors already own the claimed tech, lower T.
 6. Innovation index I = 0.4*D + 0.3*V + 0.3*T (each pillar 1–10). Recommend development only if all three are strong.
@@ -520,11 +520,11 @@ TEXTS = {
 
 **如何量化创新**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。
-- **F 频次分（1–10）**：问题有多普遍。**VOC 评论 + 专利 + 竞品都算印证**（专利/竞品说明行业已承认痛点）。不是条数×0.3。检索是抽样；行业痛点 F 一般 **6–8**。""",
+- **F 频次分（1–10）**：模型根据**本次检索命中**判断问题有多普遍，不是条数×0.3。VOC、专利、竞品只要检索到都算印证。**若 n合计=0，F 未知、P 不可计算**，不能靠常识打 6–8 分。""",
         "sidebar_suw": """- **S 严重度分（1–10）**：后果有多糟（安全/健康/退货更高）。
 - **U 未满足分（1–10）**：现有产品解决得多差，反复吐槽则高。
-- **W 付费意愿分（1–10）**：有溢价线索用线索；没有时专业工具可给 4–6，避免整个 D 算不出。
-- 机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。""",
+- **W 付费意愿分（1–10）**：只看检索里有没有加价/会买等线索；没有则未知。
+- **n合计=0 则 P 不可计算**，Desirability 不得用常识填分。机会表：Top N + 所有 **P ≥ 阈值**。""",
         "sidebar_index": """- Desirability D：已验证痛点的 P 与证据等级
 - Viability **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济**
 - Feasibility **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×相对竞品可差异化**
@@ -623,11 +623,11 @@ TEXTS = {
 
 **How innovation is quantified**
 - **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**.
-- **F frequency (1–10)**: how common the problem is. **VOC + patents + competitors all count as proof** (patents/rivals show the industry already treats it as a pain). Not 0.3×count. Search is a sample; industry pains typically **F = 6–8**.""",
+- **F frequency (1–10)**: the model judges how common the problem is from **this run’s hits**, not 0.3×count. VOC, patents, and competitors count when retrieved. **If n_total=0, F is unknown and P is not computable** — no 6–8 from general knowledge.""",
         "sidebar_suw": """- **S severity (1–10)**: how bad the consequence is (safety/health/returns higher).
 - **U unmet (1–10)**: how poorly current products solve it; higher if complaints repeat.
-- **W WTP (1–10)**: use premium clues; if none, 4–6 for pro tools so D stays computable.
-- Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.""",
+- **W WTP (1–10)**: only if search text shows pay-more / would-buy; else unknown.
+- **If n_total=0, P is not computable.** Do not fill Desirability from general knowledge.""",
         "sidebar_index": """- Desirability D: P and evidence grade of *verified* pains
 - Viability **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics**
 - Feasibility **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability vs competitors**
@@ -765,30 +765,30 @@ def score_rubric_markdown(lang: str, search_n: int, freq_full: float = 0.30) -> 
     n_total = int(search_n or 0)
     _ = freq_full
     if lang == "zh":
-        return f"""本次检索：网页 VOC **{n_total}** 条，另有专利/竞品检索（见 TECH_BLOCK）。**n = VOC + 专利 + 竞品中提到该痛点的条数**。
+        return f"""本次检索：网页 VOC **{n_total}** 条，另有专利/竞品（TECH_BLOCK）。**n = 这些条目里明确提到该痛点的条数**。
 
-专利（减振、降噪、隔振）和竞品（已做防振防噪）是 Desirability 的印证：说明行业承认痛点。**禁止**因为 VOC 子集为 0 就写「痛点 n=0 / 不可评估」。F 仍是 1–10 普遍程度，不是 0.3×n。行业痛点 F **6–8**，健康/疲劳相关 S **7–9**。
+**F 怎么估**：模型只根据命中条目的主题、渠道、是否跨市场重复，给出 1–10「有多普遍」。**不是** 0.3×n。**n合计=0 时禁止用行业常识填 F=7、S=8**：F/S/U/W=未知，P=不可计算，D 写「本次未检索到证据」。有命中时专利/竞品计入印证。
 
 | 符号 | 含义 | 打分 |
 |------|------|------|
-| **F 频次** | 问题有多普遍 | VOC+专利+竞品一起看 1–10 |
-| **S 严重度** | 后果有多糟 | 退货/安全/健康更高 |
-| **U 未满足** | 现有产品解决得多差 | 反复吐槽或竞品仍未做好则高 |
-| **W 付费意愿** | 是否愿意为解决它付钱 | 有溢价线索用线索；没有时专业工具给 4–6 |
+| **F 频次** | 问题有多普遍 | 只根据命中条目估 1–10；n=0 → 未知 |
+| **S 严重度** | 后果有多糟 | 只根据命中条目的后果用语；n=0 → 未知 |
+| **U 未满足** | 现有产品解决得多差 | 只根据命中条目；n=0 → 未知 |
+| **W 付费意愿** | 是否愿意付钱解决 | 只根据命中条目的价格/购买用语；没有 → 未知 |
 
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。D 取已印证主痛点的 P。表中列出 n_voc、n_patent、n_competitor。"""
-    return f"""Web VOC this run **{n_total}** plus patent/competitor hits in TECH_BLOCK. **n = VOC + patent + competitor rows that mention the pain.**
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。任一维未知则 P 不可计算。D 只能来自 P 可计算的已印证痛点。"""
+    return f"""Web VOC this run **{n_total}** plus TECH_BLOCK. **n = rows that actually mention the pain.**
 
-Patents (damping, noise) and competitors (anti-vibe/noise features) **are Desirability proof**. Do not write “pain n=0 / incomputable” just because the VOC-only subset is empty. F is 1–10 prevalence, not 0.3×n. Industry pains **F = 6–8**, health/fatigue **S = 7–9**.
+**How F is judged**: the model scores 1–10 prevalence only from those hits (theme, channels, cross-market repeat). **Not** 0.3×n. **If n_total=0, do not invent F=7/S=8 from general knowledge**: F/S/U/W=unknown, P not computable, D = “no evidence this run”. When hits exist, patents/competitors count.
 
 | Symbol | Meaning | Scoring |
 |------|------|------|
-| **F frequency** | How common the problem is | 1–10 from VOC+patents+competitors together |
-| **S severity** | How bad the consequence is | Higher for returns/safety/health |
-| **U unmet** | How poorly current products solve it | Higher if complaints repeat or rivals still fail |
-| **W WTP** | Would users pay more to fix it | Premium clues; else 4–6 for pro tools |
+| **F frequency** | How common | 1–10 from hits only; n=0 → unknown |
+| **S severity** | How bad | From consequence language in hits; n=0 → unknown |
+| **U unmet** | How poorly solved | From hits only; n=0 → unknown |
+| **W WTP** | Pay more to fix | From price/purchase language; else unknown |
 
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. D ≈ P of the main verified pain. Show n_voc, n_patent, n_competitor."""
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. If any factor is unknown, P is not computable. D only from computable P on supported pains."""
 
 
 def scoring_method_markdown(
