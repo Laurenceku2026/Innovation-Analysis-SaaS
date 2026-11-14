@@ -423,20 +423,21 @@ def parse_channel_search_plan(channel_detail: str) -> Dict[str, Any]:
 
 
 def channel_query_hints(channel_detail: str) -> Tuple[List[str], List[str]]:
+    """Extra site: VOC queries only when the user typed real channels. Empty input → no extras."""
+    if not (channel_detail or "").strip():
+        return [], []
     plan = parse_channel_search_plan(channel_detail)
     zh: List[str] = []
     en: List[str] = []
     for site in plan["sites"]:
         zh.append("{{p}} site:{0} 评价".format(site))
         zh.append("{{p}} site:{0} 缺点".format(site))
+        zh.append("{{p}} site:{0} 测评".format(site))
         en.append("{{p}} site:{0} review".format(site))
         en.append("{{p}} site:{0} problem".format(site))
-    for kw in plan["keywords"]:
-        zh.append("{{p}} {0} 评价".format(kw))
-        en.append("{{p}} {0} review".format(kw))
-    # format() later uses {p}; restore single braces
-    zh = [h.replace("{{p}}", "{p}") for h in zh][:10]
-    en = [h.replace("{{p}}", "{p}") for h in en][:10]
+        en.append("{{p}} site:{0} complaint".format(site))
+    zh = [h.replace("{{p}}", "{p}") for h in zh][:9]
+    en = [h.replace("{{p}}", "{p}") for h in en][:9]
     return zh, en
 
 
@@ -620,8 +621,9 @@ def search_all_markets(
         if cleaned and cleaned not in extras:
             extras.append(cleaned)
     extras = extras[:4]
-    ch_zh, ch_en = channel_query_hints(channel_detail)
-    channel_plan = parse_channel_search_plan(channel_detail)
+    typed_channels = bool((channel_detail or "").strip())
+    ch_zh, ch_en = channel_query_hints(channel_detail) if typed_channels else ([], [])
+    channel_plan = parse_channel_search_plan(channel_detail) if typed_channels else {"sites": [], "keywords": []}
     for market in markets:
         hits, errors = search_market_voc(
             market,
