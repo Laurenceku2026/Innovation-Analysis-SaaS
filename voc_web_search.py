@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -549,7 +548,7 @@ def _ddg_empty(exc: Exception) -> bool:
     return "no result" in msg or "not found" in msg
 
 
-def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
+def _ddg_client():
     try:
         try:
             from ddgs import DDGS
@@ -557,32 +556,29 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
             from duckduckgo_search import DDGS  # type: ignore
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
+    try:
+        return DDGS(timeout=8)
+    except TypeError:
+        return DDGS()
 
-    last_exc: Optional[Exception] = None
-    for attempt in range(2):
-        rows: List[Dict[str, str]] = []
-        try:
-            with DDGS() as client:
-                for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
-                    rows.append(
-                        {
-                            "title": (item.get("title") or "").strip(),
-                            "snippet": (item.get("body") or item.get("description") or "").strip(),
-                            "url": (item.get("href") or item.get("url") or "").strip(),
-                        }
-                    )
-            return rows
-        except Exception as exc:
-            if _ddg_empty(exc):
-                return []
-            last_exc = exc
-            if attempt == 0:
-                time.sleep(1.0)
-                continue
-            break
-    if last_exc:
-        raise last_exc
-    return []
+
+def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    try:
+        with _ddg_client() as client:
+            for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
+                rows.append(
+                    {
+                        "title": (item.get("title") or "").strip(),
+                        "snippet": (item.get("body") or item.get("description") or "").strip(),
+                        "url": (item.get("href") or item.get("url") or "").strip(),
+                    }
+                )
+    except Exception as exc:
+        if _ddg_empty(exc):
+            return []
+        raise
+    return rows
 
 
 def search_market_voc(
@@ -590,8 +586,8 @@ def search_market_voc(
     product_zh: str,
     product_en: str,
     *,
-    max_per_query: int = 5,
-    max_queries_per_lang: int = 5,
+    max_per_query: int = 4,
+    max_queries_per_lang: int = 3,
     extra_hints_zh: Optional[List[str]] = None,
     extra_hints_en: Optional[List[str]] = None,
     query_source: str = "market_default",
@@ -607,7 +603,7 @@ def search_market_voc(
             "zh",
             product_zh or product_en,
             list(profile["site_hints_zh"])[:max_queries_per_lang]
-            + list(extra_hints_zh or [])[:6],
+            + list(extra_hints_zh or [])[:2],
             profile["region_zh"],
             min(6, len(extra_hints_zh or [])),
         ),
@@ -615,7 +611,7 @@ def search_market_voc(
             "en",
             _search_en_product(product_en or product_zh),
             list(profile["site_hints_en"])[:max_queries_per_lang]
-            + list(extra_hints_en or [])[:6],
+            + list(extra_hints_en or [])[:2],
             profile["region_en"],
             min(6, len(extra_hints_en or [])),
         ),
@@ -698,21 +694,9 @@ def search_all_markets(
             market,
             product_zh,
             product_en,
-            extra_hints_zh=ch_zh + pain_zh,
-            extra_hints_en=ch_en + pain_en,
+            extra_hints_zh=(ch_zh + pain_zh)[:2],
+            extra_hints_en=(ch_en + pain_en)[:2],
         )
-        if not hits:
-            more, more_err = search_market_voc(
-                market,
-                product_zh,
-                product_en,
-                max_per_query=5,
-                max_queries_per_lang=2,
-                extra_hints_zh=["{p}", "{p} 测评"],
-                extra_hints_en=["{p}", "{p} review"],
-            )
-            hits.extend(more)
-            errors.extend(more_err)
         tagged = [annotate_hit_bucket(h) for h in hits]
         by_market[market] = tagged
         all_hits.extend(tagged)
@@ -794,7 +778,7 @@ def search_patents_and_competitors(
         "降噪",
         "电动工具",
     )
-    for query, region, query_lang, purpose in uniq[:18]:
+    for query, region, query_lang, purpose in uniq[:8]:
         try:
             results = _ddg_search(query, region, 4)
         except Exception as exc:
