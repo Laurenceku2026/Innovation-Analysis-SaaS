@@ -526,13 +526,27 @@ def _hit_relevant(title: str, snippet: str, url: str, keys: List[str]) -> bool:
     return any(k.lower() in blob for k in keys)
 
 
-def _quoted_en_product(text: str) -> str:
-    t = (text or "").strip()
+def _search_en_product(text: str) -> str:
+    t = re.sub(r'"', "", (text or "")).strip()
     if not t:
         return t
-    if t.startswith('"'):
+    if re.search(r"(?i)power\s+tools?", t):
+        rest = re.sub(r"(?i)power\s+tools?", " ", t)
+        rest = re.sub(r"\s+", " ", rest).strip(" -")
+        return ("power tool " + rest).strip()
+    return t
+
+
+def _short_query_text(text: str, max_words: int = 8) -> str:
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    if not t:
         return t
-    return f'"{t}"'
+    return " ".join(t.split()[:max_words])
+
+
+def _ddg_empty(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "no result" in msg or "not found" in msg
 
 
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
@@ -545,7 +559,7 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
         raise RuntimeError("missing_ddgs") from exc
 
     last_exc: Optional[Exception] = None
-    for attempt in range(3):
+    for attempt in range(2):
         rows: List[Dict[str, str]] = []
         try:
             with DDGS() as client:
@@ -559,9 +573,16 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
                     )
             return rows
         except Exception as exc:
+            if _ddg_empty(exc):
+                return []
             last_exc = exc
-            time.sleep(1.2 * (attempt + 1))
-    raise last_exc or RuntimeError("ddg_failed")
+            if attempt == 0:
+                time.sleep(1.0)
+                continue
+            break
+    if last_exc:
+        raise last_exc
+    return []
 
 
 def search_market_voc(
@@ -592,7 +613,7 @@ def search_market_voc(
         ),
         (
             "en",
-            _quoted_en_product(product_en or product_zh),
+            _search_en_product(product_en or product_zh),
             list(profile["site_hints_en"])[:max_queries_per_lang]
             + list(extra_hints_en or [])[:6],
             profile["region_en"],
@@ -665,11 +686,12 @@ def search_all_markets(
     ch_zh, ch_en = channel_query_hints(channel_detail) if typed_channels else ([], [])
     pain_zh: List[str] = []
     pain_en: List[str] = []
-    for term in extras:
-        pain_zh.append("{p} " + term + " 测评")
-        pain_zh.append("{p} " + term + " 缺点")
-        pain_en.append("{p} " + term + " review")
-        pain_en.append("{p} " + term + " problem")
+    for term in extras[:2]:
+        short = _short_query_text(term, 4)
+        if not short:
+            continue
+        pain_zh.append("{p} " + short)
+        pain_en.append("{p} " + short)
     channel_plan = parse_channel_search_plan(channel_detail) if typed_channels else {"sites": [], "keywords": []}
     for market in markets:
         hits, errors = search_market_voc(
@@ -679,6 +701,18 @@ def search_all_markets(
             extra_hints_zh=ch_zh + pain_zh,
             extra_hints_en=ch_en + pain_en,
         )
+        if not hits:
+            more, more_err = search_market_voc(
+                market,
+                product_zh,
+                product_en,
+                max_per_query=5,
+                max_queries_per_lang=2,
+                extra_hints_zh=["{p}", "{p} 测评"],
+                extra_hints_en=["{p}", "{p} review"],
+            )
+            hits.extend(more)
+            errors.extend(more_err)
         tagged = [annotate_hit_bucket(h) for h in hits]
         by_market[market] = tagged
         all_hits.extend(tagged)
@@ -706,7 +740,7 @@ def search_patents_and_competitors(
     queries: List[Tuple[str, str, str, str]] = []  # query, region, lang, purpose
 
     p_zh = (product_zh or product_en or "").strip()
-    p_en = _quoted_en_product(product_en or product_zh)
+    p_en = _search_en_product(product_en or product_zh)
     if p_zh:
         queries.extend(
             [
@@ -726,8 +760,8 @@ def search_patents_and_competitors(
         )
     for claim in (claims or [])[:6]:
         kind = (claim.get("kind") or "").lower()
-        zh_t = (claim.get("terms_zh") or claim.get("text") or "").strip()
-        en_t = (claim.get("terms_en") or claim.get("text") or "").strip()
+        zh_t = _short_query_text(claim.get("terms_zh") or claim.get("text") or "", 8)
+        en_t = _short_query_text(claim.get("terms_en") or claim.get("text") or "", 8)
         if kind in ("tech_innovation", "tech", "patent", "feature") or True:
             if zh_t:
                 queries.append((f"{zh_t} 专利", "cn-zh", "zh", "claim_patent"))
