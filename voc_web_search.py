@@ -349,7 +349,7 @@ def _pain_query_en(term: str) -> str:
 
 
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
-    """First-report queries; reuse the engine that works. Skip DuckDuckGo after DNS failure."""
+    """Prefer Bing on Cloud (DuckDuckGo DNS often fails). Never abort the whole run."""
     try:
         try:
             from ddgs import DDGS
@@ -358,34 +358,29 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
 
-    if _ENGINE["prefer"] is not None:
-        backends: List[Optional[str]] = [_ENGINE["prefer"]]
-        for extra in ("bing", "brave"):
-            if extra not in backends:
-                backends.append(extra)
-    elif _ENGINE["skip_ddg"]:
-        backends = ["bing", "brave"]
-    else:
-        backends = [None, "bing", "brave"]
+    backends: List[str] = []
+    if _ENGINE.get("prefer"):
+        backends.append(str(_ENGINE["prefer"]))
+    for name in ("bing", "brave", "duckduckgo"):
+        if name not in backends:
+            backends.append(name)
 
-    last_exc: Optional[Exception] = None
     for backend in backends:
         try:
             rows: List[Dict[str, str]] = []
             try:
-                client_cm = DDGS(timeout=12)
+                client_cm = DDGS(timeout=10)
             except TypeError:
                 client_cm = DDGS()
             with client_cm as client:
-                kwargs: Dict[str, Any] = {
-                    "region": region,
-                    "max_results": max_results,
-                    "safesearch": "moderate",
-                }
-                if backend:
-                    kwargs["backend"] = backend
                 try:
-                    items = client.text(query, **kwargs)
+                    items = client.text(
+                        query,
+                        region=region,
+                        max_results=max_results,
+                        safesearch="moderate",
+                        backend=backend,
+                    )
                 except TypeError:
                     items = client.text(
                         query, region=region, max_results=max_results, safesearch="moderate"
@@ -401,13 +396,10 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
             if rows:
                 _ENGINE["prefer"] = backend
                 return rows
-        except Exception as exc:
-            last_exc = exc
-            if backend is None and _is_dns_or_net_fail(exc):
+        except Exception:
+            if backend == "duckduckgo":
                 _ENGINE["skip_ddg"] = True
             continue
-    if last_exc:
-        raise last_exc
     return []
 
 
@@ -476,13 +468,19 @@ def search_all_markets(
     for market in markets:
         hits, errors = search_market_voc(market, product_zh, product_en)
         for term in extras:
-            zh_q = f"{product_zh} {term}".strip()
-            en_q = f"{product_en} {_pain_query_en(term)}".strip()
             more, more_err = search_market_voc(
-                market, zh_q, en_q, max_per_query=3, max_queries_per_lang=2
+                market, term, term, max_per_query=3, max_queries_per_lang=2
             )
             hits.extend(more)
             errors.extend(more_err)
+            zh_q = f"{product_zh} {term}".strip()
+            en_q = f"{product_en} {_pain_query_en(term)}".strip()
+            if zh_q != term or en_q != term:
+                more2, err2 = search_market_voc(
+                    market, zh_q, en_q, max_per_query=3, max_queries_per_lang=2
+                )
+                hits.extend(more2)
+                errors.extend(err2)
         by_market[market] = hits
         all_hits.extend(hits)
         all_errors.extend(errors)
@@ -504,7 +502,6 @@ def search_patents_and_competitors(
     errors: List[str] = []
     seen = set()
     queries: List[Tuple[str, str, str, str]] = []  # query, region, lang, purpose
-    reset_search_engine()
 
     p_zh = (product_zh or product_en or "").strip()
     p_en = (product_en or product_zh or "").strip()
