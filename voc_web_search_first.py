@@ -1,4 +1,4 @@
-"""Per-market bilingual VOC web search (Chinese + English + local platforms)."""
+"""Frozen copy of the first working search (commit a234481, used for the 11/9 report). Do not edit; voc_web_search.py is restored from this."""
 
 from __future__ import annotations
 

@@ -304,7 +304,16 @@ def _content_type(platform: str, title: str, snippet: str) -> str:
     return "Web mention"
 
 
+def _pack_ddg_item(item: Dict[str, str]) -> Dict[str, str]:
+    return {
+        "title": (item.get("title") or "").strip(),
+        "snippet": (item.get("body") or item.get("description") or "").strip(),
+        "url": (item.get("href") or item.get("url") or "").strip(),
+    }
+
+
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
+    """Same queries as the first report; try several engines if DuckDuckGo DNS fails on Cloud."""
     try:
         try:
             from ddgs import DDGS
@@ -313,17 +322,48 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
 
-    rows: List[Dict[str, str]] = []
-    with DDGS() as client:
-        for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
-            rows.append(
-                {
-                    "title": (item.get("title") or "").strip(),
-                    "snippet": (item.get("body") or item.get("description") or "").strip(),
-                    "url": (item.get("href") or item.get("url") or "").strip(),
+    last_exc: Optional[Exception] = None
+    backends: List[Optional[str]] = [None, "bing", "brave"]
+    for backend in backends:
+        try:
+            rows: List[Dict[str, str]] = []
+            with DDGS() as client:
+                kwargs: Dict[str, Any] = {
+                    "region": region,
+                    "max_results": max_results,
+                    "safesearch": "moderate",
                 }
-            )
-    return rows
+                if backend:
+                    kwargs["backend"] = backend
+                for item in client.text(query, **kwargs):
+                    packed = _pack_ddg_item(item)
+                    if packed.get("url") or packed.get("title"):
+                        rows.append(packed)
+            if rows:
+                return rows
+        except TypeError:
+            try:
+                rows = []
+                with DDGS() as client:
+                    for item in client.text(
+                        query, region=region, max_results=max_results, safesearch="moderate"
+                    ):
+                        packed = _pack_ddg_item(item)
+                        if packed.get("url") or packed.get("title"):
+                            rows.append(packed)
+                return rows
+            except Exception as exc:
+                last_exc = exc
+                continue
+        except Exception as exc:
+            last_exc = exc
+            msg = str(exc).lower()
+            if "no result" in msg:
+                continue
+            continue
+    if last_exc:
+        raise last_exc
+    return []
 
 
 def search_market_voc(
