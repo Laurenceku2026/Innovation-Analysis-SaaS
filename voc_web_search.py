@@ -304,8 +304,52 @@ def _content_type(platform: str, title: str, snippet: str) -> str:
     return "Web mention"
 
 
+_ENGINE: Dict[str, Any] = {"prefer": None, "skip_ddg": False}
+
+
+def reset_search_engine() -> None:
+    _ENGINE["prefer"] = None
+    _ENGINE["skip_ddg"] = False
+
+
+def _is_dns_or_net_fail(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(
+        token in msg
+        for token in (
+            "dns",
+            "getaddrinfo",
+            "name resolution",
+            "failed to resolve",
+            "nodename",
+            "timeout",
+            "timed out",
+            "connection",
+        )
+    )
+
+
+def _pain_query_en(term: str) -> str:
+    """English search phrase for a user pain that may be Chinese, English, or mixed."""
+    t = (term or "").strip()
+    if not t:
+        return t
+    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", t))
+    has_en = bool(re.search(r"[A-Za-z]{3,}", t))
+    if has_en and not has_cjk:
+        return t
+    bits: List[str] = []
+    if re.search(r"震|振", t):
+        bits.append("vibration")
+    if re.search(r"噪|吵", t) or re.search(r"噪音|噪声", t):
+        bits.append("noise")
+    if bits:
+        return " ".join(bits)
+    return t
+
+
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
-    """First-report queries; Bing/Brave if DuckDuckGo DNS fails on Streamlit Cloud."""
+    """First-report queries; reuse the engine that works. Skip DuckDuckGo after DNS failure."""
     try:
         try:
             from ddgs import DDGS
@@ -314,8 +358,18 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
 
+    if _ENGINE["prefer"] is not None:
+        backends: List[Optional[str]] = [_ENGINE["prefer"]]
+        for extra in ("bing", "brave"):
+            if extra not in backends:
+                backends.append(extra)
+    elif _ENGINE["skip_ddg"]:
+        backends = ["bing", "brave"]
+    else:
+        backends = [None, "bing", "brave"]
+
     last_exc: Optional[Exception] = None
-    for backend in (None, "bing", "brave"):
+    for backend in backends:
         try:
             rows: List[Dict[str, str]] = []
             try:
@@ -345,11 +399,12 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
                         }
                     )
             if rows:
+                _ENGINE["prefer"] = backend
                 return rows
         except Exception as exc:
             last_exc = exc
-            if "no result" in str(exc).lower():
-                continue
+            if backend is None and _is_dns_or_net_fail(exc):
+                _ENGINE["skip_ddg"] = True
             continue
     if last_exc:
         raise last_exc
@@ -417,11 +472,14 @@ def search_all_markets(
     all_errors: List[str] = []
     by_market: Dict[str, List[Dict[str, str]]] = {}
     extras = [t.strip() for t in (extra_terms or []) if t and t.strip()][:4]
+    reset_search_engine()
     for market in markets:
         hits, errors = search_market_voc(market, product_zh, product_en)
         for term in extras:
+            zh_q = f"{product_zh} {term}".strip()
+            en_q = f"{product_en} {_pain_query_en(term)}".strip()
             more, more_err = search_market_voc(
-                market, term, term, max_per_query=3, max_queries_per_lang=2
+                market, zh_q, en_q, max_per_query=3, max_queries_per_lang=2
             )
             hits.extend(more)
             errors.extend(more_err)
@@ -446,6 +504,7 @@ def search_patents_and_competitors(
     errors: List[str] = []
     seen = set()
     queries: List[Tuple[str, str, str, str]] = []  # query, region, lang, purpose
+    reset_search_engine()
 
     p_zh = (product_zh or product_en or "").strip()
     p_en = (product_en or product_zh or "").strip()

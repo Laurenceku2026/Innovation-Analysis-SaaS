@@ -1228,12 +1228,14 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                     existing = {(c.get("text") or "").strip().lower() for c in claims}
                     for item in user_tech_items:
                         if item.lower() not in existing:
+                            has_cjk = bool(re.search(r"[\u4e00-\u9fff]", item))
+                            has_en = bool(re.search(r"[A-Za-z]{3,}", item))
                             claims.append(
                                 {
                                     "text": item,
                                     "kind": "tech_innovation",
-                                    "terms_zh": item,
-                                    "terms_en": item,
+                                    "terms_zh": item if has_cjk else "",
+                                    "terms_en": item if has_en else item,
                                 }
                             )
                             existing.add(item.lower())
