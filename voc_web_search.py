@@ -1,4 +1,4 @@
-"""Per-market bilingual VOC web search (Chinese + English + local platforms)."""
+﻿"""Per-market bilingual VOC web search (Chinese + English + local platforms)."""
 
 from __future__ import annotations
 
@@ -304,52 +304,7 @@ def _content_type(platform: str, title: str, snippet: str) -> str:
     return "Web mention"
 
 
-_ENGINE: Dict[str, Any] = {"prefer": None, "skip_ddg": False}
-
-
-def reset_search_engine() -> None:
-    _ENGINE["prefer"] = None
-    _ENGINE["skip_ddg"] = False
-
-
-def _is_dns_or_net_fail(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return any(
-        token in msg
-        for token in (
-            "dns",
-            "getaddrinfo",
-            "name resolution",
-            "failed to resolve",
-            "nodename",
-            "timeout",
-            "timed out",
-            "connection",
-        )
-    )
-
-
-def _pain_query_en(term: str) -> str:
-    """English search phrase for a user pain that may be Chinese, English, or mixed."""
-    t = (term or "").strip()
-    if not t:
-        return t
-    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", t))
-    has_en = bool(re.search(r"[A-Za-z]{3,}", t))
-    if has_en and not has_cjk:
-        return t
-    bits: List[str] = []
-    if re.search(r"震|振", t):
-        bits.append("vibration")
-    if re.search(r"噪|吵", t) or re.search(r"噪音|噪声", t):
-        bits.append("noise")
-    if bits:
-        return " ".join(bits)
-    return t
-
-
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
-    """Prefer Bing on Cloud (DuckDuckGo DNS often fails). Never abort the whole run."""
     try:
         try:
             from ddgs import DDGS
@@ -358,49 +313,17 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
     except ImportError as exc:
         raise RuntimeError("missing_ddgs") from exc
 
-    backends: List[str] = []
-    if _ENGINE.get("prefer"):
-        backends.append(str(_ENGINE["prefer"]))
-    for name in ("bing", "brave", "duckduckgo"):
-        if name not in backends:
-            backends.append(name)
-
-    for backend in backends:
-        try:
-            rows: List[Dict[str, str]] = []
-            try:
-                client_cm = DDGS(timeout=10)
-            except TypeError:
-                client_cm = DDGS()
-            with client_cm as client:
-                try:
-                    items = client.text(
-                        query,
-                        region=region,
-                        max_results=max_results,
-                        safesearch="moderate",
-                        backend=backend,
-                    )
-                except TypeError:
-                    items = client.text(
-                        query, region=region, max_results=max_results, safesearch="moderate"
-                    )
-                for item in items:
-                    rows.append(
-                        {
-                            "title": (item.get("title") or "").strip(),
-                            "snippet": (item.get("body") or item.get("description") or "").strip(),
-                            "url": (item.get("href") or item.get("url") or "").strip(),
-                        }
-                    )
-            if rows:
-                _ENGINE["prefer"] = backend
-                return rows
-        except Exception:
-            if backend == "duckduckgo":
-                _ENGINE["skip_ddg"] = True
-            continue
-    return []
+    rows: List[Dict[str, str]] = []
+    with DDGS() as client:
+        for item in client.text(query, region=region, max_results=max_results, safesearch="moderate"):
+            rows.append(
+                {
+                    "title": (item.get("title") or "").strip(),
+                    "snippet": (item.get("body") or item.get("description") or "").strip(),
+                    "url": (item.get("href") or item.get("url") or "").strip(),
+                }
+            )
+    return rows
 
 
 def search_market_voc(
@@ -464,7 +387,6 @@ def search_all_markets(
     all_errors: List[str] = []
     by_market: Dict[str, List[Dict[str, str]]] = {}
     extras = [t.strip() for t in (extra_terms or []) if t and t.strip()][:4]
-    reset_search_engine()
     for market in markets:
         hits, errors = search_market_voc(market, product_zh, product_en)
         for term in extras:
@@ -473,14 +395,6 @@ def search_all_markets(
             )
             hits.extend(more)
             errors.extend(more_err)
-            zh_q = f"{product_zh} {term}".strip()
-            en_q = f"{product_en} {_pain_query_en(term)}".strip()
-            if zh_q != term or en_q != term:
-                more2, err2 = search_market_voc(
-                    market, zh_q, en_q, max_per_query=3, max_queries_per_lang=2
-                )
-                hits.extend(more2)
-                errors.extend(err2)
         by_market[market] = hits
         all_hits.extend(hits)
         all_errors.extend(errors)
