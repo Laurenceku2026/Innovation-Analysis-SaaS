@@ -1,4 +1,4 @@
-"""Innovation Assessment — standalone Streamlit Cloud app (TechLife child app).
+"""Innovation Analysis — standalone Streamlit Cloud app (TechLife child app).
 
 Deploy: GitHub Laurenceku2026/Innovation-Analysis-SaaS, main file app.py.
 Secrets (JWT, Supabase, AI) belong on this Cloud app, not the portal.
@@ -165,11 +165,9 @@ def consume_trial(user_id: str, app_name: str = "innovation") -> Tuple[bool, int
 def split_user_items(raw: str) -> List[str]:
     items: List[str] = []
     for line in (raw or "").splitlines():
-        for part in re.split(r"[;；]+", line):
-            text = re.sub(r"^[\s·•\-\d\.、）)\]]+", "", part).strip()
-            text = text.strip(" ；;,。. ")
-            if text:
-                items.append(text)
+        text = re.sub(r"^[\s·•\-\d\.、）)\]]+", "", line).strip()
+        if text:
+            items.append(text)
     return items
 
 
@@ -331,7 +329,7 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 硬性规则：
 1. 禁止编造 URL、专利号、竞品型号、条数。只能引用 SEARCH_BLOCK / TECH_BLOCK 中的条目。VOC 证据必须来自网页检索，用户没有粘贴 VOC。
 2. 用户填写的「痛点」和「技术创新」是假设/声称，不是结论。必须全部列出，并用检索结果判定：印证 / 部分印证 / 未印证 / 反证。未印证的假设不得抬高 D 或 T。
-3. 痛点优先级见 <<<SCORE_RUBRIC>>>。用户填写的痛点**不是 n**。**n = 本次 SEARCH_BLOCK + TECH_BLOCK 中明确提到该痛点的条数**（测评、电商评论、竞品卖点、专利、标准、展会都算进同一个 n，不要拆 n_voc/n_patent/n_competitor）。n≥1 即可判定印证或部分印证。F/S/U/W 是顾问根据这些条目打的 1–10，**不是** n，也**不是** 0.3×n。n=0 → 未印证，F 留空，禁止用模型记忆填 7。P=0.3F+0.3S+0.2U+0.2W。
+3. 痛点优先级见 <<<SCORE_RUBRIC>>>。F/S/U/W 都是 1–10 分，不是原始次数，因此 P 也在 1–10。仅对「印证/部分印证」或「检索新发现」的痛点计算可入选的 P。创新机会表：Top {top_n} + 所有 P≥{pain_threshold}。打分表必须列出 n、N、r=n/N、F、S、U、W、P。
 4. Viability 分 V：有证据时 V=0.4×W + 0.3×可触达/渠道 + 0.3×单位经济；缺证据写未知。
 5. Feasibility 分 T：T=0.4×技术就绪 + 0.3×IP空白 + 0.3×与竞品可差异化。用户声称的技术若专利/竞品已占，T 必须下调。
 6. 创新指数 I=0.4×D + 0.3×V + 0.3×T（D/V/T 各 1–10）。三支柱都高才建议投入。
@@ -348,15 +346,14 @@ Desirability=痛点与 VOC；Viability=创新的商业价值；Feasibility=技�
 ## D1 用户痛点假设核对（必须覆盖全部用户填写项）
 用户认为的痛点如下（假设，待检索证明）：
 {user_pains}
-列：#、用户原话（假设）、检索判定、n、F、S、U、W、P、是否≥阈值 {pain_threshold}、证据等级、引用。
-n=本页检索提到该痛点的条数（与引用条数应一致或可对上）。引用写「条目 N（测评/卖点/专利/评论）」+ 要点。n=0 则判定未印证、F 留空。未印证不得抬高 D。
+列：用户原话、检索判定、n（该痛点命中条数）、N（本次 VOC 总条数={search_n}）、r=n/N、F(1-10)、S(1-10)、U(1-10)、W(1-10)、P、是否≥阈值 {pain_threshold}、证据等级、引用。未印证则 P 不可用于抬高 D。禁止把 n 直接当作 F。
 
 ## D1b 产品描述补充主张
 产品简要描述：{product_description}
 仅补充用户痛点框未覆盖的主张。
 
 ## D2 检索获得的 VOC（唯一证据来源）
-每市场：信息渠道、中文检索、英文检索、YouTuber/测评/评论、该市场痛点。用「市场 / 条目编号 / 内容要点」表归纳印证用户假设的条目，再列用户没写但检索发现的新痛点。网页检索 {search_n} 条。用户填写的渠道已优先 site 深挖。禁止写未出现在 SEARCH_BLOCK 的 Home Depot/YouTube/专利。
+每市场：信息渠道、中文检索、英文检索、YouTuber/测评/评论、该市场痛点。跨市场汇总。网页 VOC {search_n} 条。必须区分：印证了用户假设的、以及用户没写但检索发现的新痛点。
 
 ## D3 信息获取渠道（尽量列全）
 每市场一张表。必须覆盖 CHANNEL_GUIDE。
@@ -439,7 +436,7 @@ Desirability = pain points and VOC. Viability = commercial value of the innovati
 Hard rules:
 1. Never invent URLs, patent numbers, competitor SKUs, or counts. Cite only SEARCH_BLOCK / TECH_BLOCK. VOC comes from web search only; the user did not paste VOC.
 2. User-entered pains and technical innovations are HYPOTHESES/CLAIMS, not conclusions. List every one and verdict: supported / partial / not found / contradicted. Unsupported claims must not inflate D or T.
-3. Pain priority: see <<<SCORE_RUBRIC>>>. User-typed pains are **not** n. **n = SEARCH_BLOCK + TECH_BLOCK rows that mention this pain** (reviews, store comments, competitor claims, patents, standards, trade shows — one n, do not split n_voc/n_patent/n_competitor). n≥1 can be supported/partial. F/S/U/W are 1–10 advisor scores from those rows, **not** n and **not** 0.3×n. n=0 → not supported, leave F blank, no memory score of 7. P=0.3F+0.3S+0.2U+0.2W.
+3. Pain priority: see <<<SCORE_RUBRIC>>>. F/S/U/W are 1–10 scores, not raw counts, so P is also 1–10. Only supported/partial or search-discovered pains may get a computable P. Table: Top {top_n} plus all P>={pain_threshold}. Scoring tables MUST show n, N, r=n/N, F, S, U, W, P.
 4. Viability V = 0.4*WTP + 0.3*reach/channel + 0.3*unit economics when evidence exists.
 5. Feasibility T = 0.4*tech readiness + 0.3*IP white space + 0.3*differentiability. If patents/competitors already own the claimed tech, lower T.
 6. Innovation index I = 0.4*D + 0.3*V + 0.3*T (each pillar 1–10). Recommend development only if all three are strong.
@@ -453,12 +450,11 @@ Then a hypothesis-check table: user pain hypotheses, user tech claims, search ve
 ## D1 Check every user-stated pain HYPOTHESIS
 User-believed pains (hypotheses to prove or disprove):
 {user_pains}
-Columns: #, user wording (hypothesis), verdict, n, F, S, U, W, P, ≥threshold {pain_threshold}?, evidence grade, citation.
-n = this-run rows that mention the pain (should match cited entries). Cite “entry N (review/claim/patent/comment)” plus gist. n=0 → not supported, F blank.
+Columns: user wording, verdict, n (hits for this pain), N (total VOC hits this run={search_n}), r=n/N, F(1-10), S(1-10), U(1-10), W(1-10), P, ≥threshold {pain_threshold}?, evidence grade, citation. Never use raw n as F.
 Unsupported rows must not raise D.
 ## D1b Extra claims from the short description only if not already in the pain box.
 Product description: {product_description}
-## D2 VOC obtained by search. Per market: entry numbers + gist that support the user’s hypotheses, then newly discovered pains. Web hits {search_n}. Do not mention Home Depot/YouTube/patents that are absent from SEARCH_BLOCK.
+## D2 VOC obtained by search (the only evidence source). Chinese+English, YouTubers/reviews, {search_n} hits. Separate: supports user hypothesis vs newly discovered pains.
 ## D3 Information channels — cover CHANNEL_GUIDE
 <<<CHANNEL_GUIDE>>>
 ## D4 JTBD by market
@@ -502,7 +498,7 @@ Output English Markdown only.
 
 TEXTS = {
     "zh": {
-        "title": "创新评估系统",
+        "title": "创新分析系统",
         "back": "← 返回应用导航",
         "return_portal": "返回门户",
         "sidebar_analyst": "分析师信息",
@@ -517,24 +513,20 @@ TEXTS = {
 
 **痛点从哪来**
 - 唯一证据来源：目标市场的中英文 VOC 检索（YouTuber、测评、电商评论等）
-- 先核对你列出的假设是否被本次检索条目提到（测评/评论/卖点/专利均算）
+- 先核对你列出的假设是否被真实用户提到
 - 再收录检索新发现的高频痛点
 
 **如何量化创新**
-- **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。
-- **n**：本次检索提到该痛点的条数（测评/评论/卖点/专利都算）。你填写的痛点不算进 n。
-- **F 频次分（1–10）**：顾问根据这些条目判断有多普遍，不是 n，也不是条数×0.3。n=0 则未印证、不打 F。""",
-        "sidebar_suw": """- **S 严重度分（1–10）**：后果有多糟（安全/健康/退货更高）。
-- **U 未满足分（1–10）**：现有产品解决得多差，反复吐槽则高。
-- **W 付费意愿分（1–10）**：检索里有加价/会买线索才给高分。
-- 机会表：Top N + 所有 **P ≥ 阈值**。无检索条目时不要用记忆填分。""",
-        "sidebar_index": """- Desirability D：已验证痛点的 P 与证据等级
+- **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。这里的 0.3/0.2 是**权重**。F、S、U、W 都必须先变成 **1–10 分**，所以 P 最大为 10，不会出现「次数×0.3>10」。
+- **F 频次分**：不是提及次数。设本次 VOC 总条数为 N，该痛点命中 n 条，**r = n/N**。N≥8 且 n≥1 时 **F = min(10, max(1, round(10×r/0.30)))**（占比 30% 即为 10 分）。N 太小或 n=0 → F 未知。
+- **S 严重度分（1–10）**：看这 n 条里后果有多糟（安全/退货/不可用→高；轻微抱怨→低）。没有后果用语 → 未知。
+- **U 未满足分（1–10）**：这 n 条里有多少在说现有产品/竞品没解决。u=未解决条数/n，**U = min(10, max(1, round(10×u)))**。看不出 → 未知。
+- **W 付费意愿分（1–10）**：只看是否出现愿加价、会买、换品、嫌贵但仍要解决。完全没有价格/购买用语 → 未知。
+- 任一维未知则 **P 不可计算**。机会表：Top N + 所有 **P ≥ 阈值**（默认 6.0）。未印证的假设不得抬分。
+- Desirability D：已验证痛点的 P 与证据等级
 - Viability **V = 0.4×W + 0.3×渠道可达 + 0.3×单位经济**
 - Feasibility **T = 0.4×技术就绪 + 0.3×IP空白 + 0.3×相对竞品可差异化**
 - 创新指数 **I = 0.4×D + 0.3×V + 0.3×T**。三支柱都高才建议投入。""",
-        "freq_full_label": "频次满分门槛 r_star（提及占比）",
-        "freq_full_help": "r_star = VOC 提及占比多少给 F=10。N 不含专利/竞品。默认 0.30 表示占 VOC 的 30% 即为满分。调低更容易得高 F，调高更严。与 P 公式里的权重 0.3 无关。",
-        "freq_full_caption": "当前：提及占比达到 {pct}% 时 F=10。F = min(10, round(10×r / r_star))",
         "analyst_name_label": "分析人姓名",
         "analyst_name_ph": "请输入分析师姓名",
         "analyst_title_label": "分析人头衔（可选）",
@@ -564,8 +556,7 @@ TEXTS = {
         "channel_status": "现有销售渠道情况",
         "channel_options": ["有成熟渠道", "有部分渠道", "渠道较弱", "无渠道/从零开始"],
         "channel_detail": "销售渠道详情",
-        "channel_detail_ph": "例如：天猫旗舰店、京东自营、Amazon、YouTube、部分线下宠物店",
-        "channel_detail_help": "选填。填写了（如京东、天猫、Amazon、YouTube、网址）才会在这些渠道上加搜 VOC；不填则只按各市场默认站点检索，不额外深挖。",
+        "channel_detail_ph": "例如：天猫旗舰店、京东自营、部分线下宠物店",
         "brand_status": "品牌认知度",
         "brand_options": ["高（知名）", "中（行业内有认知）", "低（需从零建设）"],
         "tech_capability": "技术能力",
@@ -588,25 +579,25 @@ TEXTS = {
         "pain_threshold_label": "痛点纳入阈值 P（1–10）",
         "pain_threshold_help": "P=0.3×频次+0.3×严重度+0.2×未满足+0.2×付费意愿。第7部分先出 Top N；凡 P≥阈值的机会全部列入，所以可以多于 N 条。建议默认 6.0。",
         "top_n_label": "至少输出机会数（Top N）",
-        "submit_btn": "🚀 开始创新评估",
+        "submit_btn": "🚀 开始创新分析",
         "product_name_missing": "请填写产品名称",
         "api_key_missing": "AI API Key 未配置",
         "generating": "正在分析证据与痛点量化…",
         "progress_preparing": "整理中英文检索词与 VOC 计数…",
         "progress_search": "按市场检索 VOC，并核对描述主张、专利与竞品…",
         "progress_analyzing": "按 Desirability / Viability / Feasibility 撰写中文报告…",
-        "progress_finishing": "整理创新评估报告…",
-        "error_prefix": "评估失败：",
-        "report_title": "📄 创新评估报告",
+        "progress_finishing": "整理创新分析报告…",
+        "error_prefix": "分析失败：",
+        "report_title": "📄 创新分析报告",
         "download_section": "📥 下载",
         "download_btn": "下载 Word 文档",
         "download_excel": "下载 Excel（VOC 数据库）",
         "method_title": "如何量化创新",
         "clear_btn": "清除报告并重新填写",
-        "footer": "创新评估 · 证据优先于推断",
+        "footer": "创新分析模块 · 证据优先于推断",
     },
     "en": {
-        "title": "Innovation Assessment System",
+        "title": "Innovation Analysis System",
         "back": "← Back to app navigation",
         "return_portal": "Back to portal",
         "sidebar_analyst": "Analyst",
@@ -621,24 +612,20 @@ TEXTS = {
 
 **Where pains come from**
 - Only evidence source: bilingual VOC search (YouTubers, reviews, store comments)
-- First check whether your listed hypotheses appear in this run’s hits (reviews, claims, patents all count)
+- First check whether your listed hypotheses appear in real user language
 - Then add high-frequency pains you did not list
 
 **How innovation is quantified**
-- **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**.
-- **n**: this-run rows that mention the pain (reviews, claims, patents all count). Your typed pains do not add to n.
-- **F frequency (1–10)**: advisor prevalence from those rows, not n and not 0.3×count. n=0 → not supported, no F.""",
-        "sidebar_suw": """- **S severity (1–10)**: how bad the consequence is (safety/health/returns higher).
-- **U unmet (1–10)**: how poorly current products solve it; higher if complaints repeat.
-- **W WTP (1–10)**: higher only if search text shows pay-more / would-buy.
-- Opportunity table: Top N + every **P ≥ threshold**. Do not fill scores from memory when there are no search rows.""",
-        "sidebar_index": """- Desirability D: P and evidence grade of *verified* pains
+- **P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. The 0.3/0.2 are **weights**. F, S, U, W are first scaled to **1–10**, so P cannot exceed 10. Raw mention count is never multiplied.
+- **F frequency score**: not the raw count. N = VOC hits this run, n = hits for this pain, **r = n/N**. If N≥8 and n≥1, **F = min(10, max(1, round(10×r/0.30)))** (30% share = 10). Else F unknown.
+- **S severity (1–10)**: how bad the consequence is in those n snippets (safety/returns/unusable high; mild gripe low). No consequence language → unknown.
+- **U unmet (1–10)**: share of the n snippets saying current/competitor products fail. u = unsolved/n, **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown.
+- **W WTP (1–10)**: only if text shows pay-more / would-buy / switch / too-expensive-but-need-it. No price or purchase language → unknown.
+- If any factor is unknown, **P is not computable**. Opportunity table: Top N + every **P ≥ threshold** (default 6.0). Unsupported hypotheses must not raise scores.
+- Desirability D: P and evidence grade of *verified* pains
 - Viability **V = 0.4×W + 0.3×reach/channel + 0.3×unit economics**
 - Feasibility **T = 0.4×tech readiness + 0.3×IP white space + 0.3×differentiability vs competitors**
 - Innovation index **I = 0.4×D + 0.3×V + 0.3×T**. Invest only if all three are strong.""",
-        "freq_full_label": "Frequency full-score bar r_star (mention share)",
-        "freq_full_help": "r_star = VOC mention share that maps to F=10. N excludes patents/competitors. Default 0.30 = 30% of VOC. Lower = easier high F; higher = stricter. Not the 0.3 weight in P.",
-        "freq_full_caption": "Now: mention share {pct}% → F=10. F = min(10, round(10×r / r_star))",
         "analyst_name_label": "Analyst name",
         "analyst_name_ph": "Your name",
         "analyst_title_label": "Title (optional)",
@@ -668,8 +655,7 @@ TEXTS = {
         "channel_status": "Current sales-channel status",
         "channel_options": ["Mature channels", "Partial channels", "Weak channels", "No channels / start from scratch"],
         "channel_detail": "Sales-channel details",
-        "channel_detail_ph": "e.g., Tmall flagship, JD, Amazon, YouTube, some pet stores",
-        "channel_detail_help": "Optional. If you name channels (JD, Tmall, Amazon, YouTube, URLs), those sites get extra VOC search. Leave blank to use market defaults only.",
+        "channel_detail_ph": "e.g., Tmall flagship, JD, some pet stores",
         "brand_status": "Brand awareness",
         "brand_options": ["High (well-known)", "Medium (industry-known)", "Low (need to build)"],
         "tech_capability": "Technical capability",
@@ -692,7 +678,7 @@ TEXTS = {
         "pain_threshold_label": "Pain inclusion threshold P (1–10)",
         "pain_threshold_help": "P=0.3×frequency+0.3×severity+0.2×unmet+0.2×WTP. Part 7 always lists Top N, then adds every opportunity with P≥threshold (so it can exceed N). Default 6.0.",
         "top_n_label": "Minimum opportunities (Top N)",
-        "submit_btn": "🚀 Start innovation assessment",
+        "submit_btn": "🚀 Start innovation analysis",
         "product_name_missing": "Please enter the product name",
         "api_key_missing": "AI API Key not configured",
         "generating": "Analyzing evidence and pain quantification…",
@@ -700,14 +686,14 @@ TEXTS = {
         "progress_search": "Searching VOC by market, plus patents and competitors for your claims…",
         "progress_analyzing": "Writing the English report across Desirability / Viability / Feasibility…",
         "progress_finishing": "Assembling the report…",
-        "error_prefix": "Assessment failed: ",
-        "report_title": "📄 Innovation Assessment Report",
+        "error_prefix": "Analysis failed: ",
+        "report_title": "📄 Innovation Analysis Report",
         "download_section": "📥 Download",
         "download_btn": "Download Word",
         "download_excel": "Download Excel (VOC database)",
         "method_title": "How innovation is quantified",
         "clear_btn": "Clear report and edit inputs",
-        "footer": "Innovation Assessment · evidence before inference",
+        "footer": "Innovation Analysis · evidence before inference",
     },
 }
 
@@ -765,48 +751,37 @@ def expand_bilingual_terms(
     return product_name, product_name, []
 
 
-def score_rubric_markdown(lang: str, search_n: int, freq_full: float = 0.30) -> str:
+def score_rubric_markdown(lang: str, search_n: int) -> str:
     n_total = int(search_n or 0)
-    _ = freq_full
     if lang == "zh":
-        return f"""本次检索网页 **{n_total}** 条，另有 TECH_BLOCK。
+        return f"""**F/S/U/W 都是 1–10 分，不是原始次数。** 公式里的 0.3、0.2 是权重，因此 **P 落在 1–10**，不会出现「提及次数×0.3>10」。
 
-**n 的定义（不要用「原声」）**：
-- 用户输入的痛点 = 假设，**永远不计入 n**。
-- **n = 本页 SEARCH/TECH 里明确提到该痛点的条数**（测评、评论、卖点、专利、标准、展会都算）。有 5 条行业在讲振动 → n=5，判定印证/部分印证。
-- **不要**拆 n_voc / n_patent / n_competitor。引用写条目编号，条数应能对上 n。
-- **F** = 顾问看这些条目后给的 1–10 普遍程度，**不是** n，**不是** 0.3×n。n=0 则未印证、F 留空，禁止用记忆填 7。
+本次网页 VOC 总条数 **N = {n_total}**。对每一条痛点，n = SEARCH_BLOCK 中明确提到该痛点的条数（禁止虚构 n）。**r = n/N**。
 
-| 符号 | 含义 | 打分 |
+| 符号 | 数据怎么来 | 如何变成 1–10 分 |
+|------|------------|------------------|
+| **F 频次分** | 提及率 r=n/N，不是 n 本身 | N≥8 且 n≥1：**F = min(10, max(1, round(10×r/0.30)))**。r≥0.30 → F=10。否则 F=未知 |
+| **S 严重度分** | 这 n 条 VOC 的后果用语 | 10 安全/伤人/财产损坏；8 退货/不能用；6 经常费时；4 轻度抱怨；2 口味偏好。无后果用语 → 未知 |
+| **U 未满足分** | 这 n 条里说现有产品/竞品没解决的比例 u | **U = min(10, max(1, round(10×u)))**。看不出 → 未知 |
+| **W 付费意愿分** | 这 n 条里的加价/会买/换品/嫌贵仍要解决 | 10 明确愿加价或已为替代方案付钱；7 解决了就会买；4 仅暗示有价值。全无价格/购买用语 → 未知 |
+
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。任一维为未知则 P=不可计算。报告表格必须同时给出 n、N、r、F、S、U、W、P。"""
+    return f"""**F, S, U, W are 1–10 scores, not raw counts.** The 0.3 and 0.2 in P are weights, so **P stays in 1–10**. Never do 0.3 × mention-count.
+
+Total web VOC hits this run **N = {n_total}**. For each pain, n = SEARCH_BLOCK hits that mention it (do not invent n). **r = n/N**.
+
+| Symbol | Data | Scale to 1–10 |
 |------|------|------|
-| **F 频次** | 问题有多普遍 | 按引用条目判断 1–10 |
-| **S 严重度** | 后果有多糟 | 按引用条目的后果用语 |
-| **U 未满足** | 现有产品解决得多差 | 按引用条目 |
-| **W 付费意愿** | 是否愿意付钱解决 | 有价格/购买用语才给；否则偏低并注明 |
+| **F frequency** | share r=n/N, not n | If N≥8 and n≥1: **F = min(10, max(1, round(10×r/0.30)))**. r≥0.30 → F=10. Else unknown |
+| **S severity** | consequence language in those n hits | 10 safety/injury/property; 8 return/unusable; 6 recurring time-cost; 4 mild gripe; 2 preference. No consequence words → unknown |
+| **U unmet** | share u of the n hits saying current/competitor products fail | **U = min(10, max(1, round(10×u)))**. Cannot tell → unknown |
+| **W WTP** | pay-more / would-buy / switch language in those n hits | 10 explicit extra pay or already paying a workaround; 7 would buy if solved; 4 value implied only. No price/purchase language → unknown |
 
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**。D1 列：用户原话、判定、n、F、S、U、W、P、证据等级、引用。"""
-    return f"""Web hits this run **{n_total}** plus TECH_BLOCK.
-
-**Definition of n** (do not use “user-voice only”):
-- User-typed pains are hypotheses and **never** count toward n.
-- **n = this-run SEARCH/TECH rows that mention the pain** (reviews, comments, claims, patents, standards, shows). Five industry hits on vibration → n=5, supported/partial.
-- Do **not** split n_voc / n_patent / n_competitor. Citations should add up to n.
-- **F** = 1–10 advisor prevalence from those rows, **not** n, **not** 0.3×n. n=0 → not supported, F blank, no memory 7.
-
-| Symbol | Meaning | Scoring |
-|------|------|------|
-| **F frequency** | How common | 1–10 from cited entries |
-| **S severity** | How bad | Consequence language in cited entries |
-| **U unmet** | How poorly solved | From cited entries |
-| **W WTP** | Pay more to fix | Only if price/purchase language exists |
-
-**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. D1: wording, verdict, n, F, S, U, W, P, grade, citation."""
+**P = 0.3×F + 0.3×S + 0.2×U + 0.2×W**. If any factor is unknown, P is not computable. Tables must show n, N, r, F, S, U, W, P."""
 
 
-def scoring_method_markdown(
-    lang: str, threshold: float, top_n: int, search_n: int = 0, freq_full: float = 0.30
-) -> str:
-    rubric = score_rubric_markdown(lang, search_n, freq_full)
+def scoring_method_markdown(lang: str, threshold: float, top_n: int, search_n: int = 0) -> str:
+    rubric = score_rubric_markdown(lang, search_n)
     if lang == "zh":
         return f"""用户填写的痛点与技术创新是**假设**。分数只来自网页检索到的 VOC / 专利 / 竞品，未印证的假设不得抬高分数。
 
@@ -866,11 +841,9 @@ def report_header_markdown(
     search_n: int,
     pain_threshold: float,
     top_n: int,
-    freq_full: float = 0.30,
-    voc_n_for_f: int | None = None,
 ) -> str:
     if lang == "zh":
-        return f"""# 《创新评估报告》
+        return f"""# 《创新分析报告》
 ## {product_name}
 
 **报告在线访问地址：{report_url}**
@@ -890,18 +863,16 @@ def report_header_markdown(
 | 中文检索词 | {product_zh} |
 | 英文检索词 | {product_en} |
 | VOC 粘贴条数 | {voc_n} |
-| 网页检索总条数 | {search_n} |
-| 网页 VOC 条数 | {voc_n_for_f if voc_n_for_f is not None else search_n} |
+| 网页检索条数 | {search_n} |
 | 分析框架 | Desirability / Viability / Feasibility |
 | 痛点纳入阈值 P | {pain_threshold:g} |
-| 频次分 F | 顾问 1–10（n=本页提到该痛点的检索条数，≠F） |
 | 至少输出机会数 | Top {top_n} |
 | 报告日期 | {current_date} |
 | 分析人 | {analyst_info} |
 
 ---
 """
-    return f"""# Innovation Assessment Report
+    return f"""# Innovation Analysis Report
 ## {product_name}
 
 **Online report URL: {report_url}**
@@ -921,11 +892,9 @@ def report_header_markdown(
 | Chinese search terms | {product_zh} |
 | English search terms | {product_en} |
 | Pasted VOC items | {voc_n} |
-| Web search total | {search_n} |
-| Web VOC items | {voc_n_for_f if voc_n_for_f is not None else search_n} |
+| Web VOC items | {search_n} |
 | Framework | Desirability / Viability / Feasibility |
 | Pain inclusion threshold P | {pain_threshold:g} |
-| Frequency F | Advisor 1–10 (n=this-run rows mentioning the pain, not F) |
 | Minimum opportunities | Top {top_n} |
 | Report date | {current_date} |
 | Analyst | {analyst_info} |
@@ -948,28 +917,13 @@ def build_voc_excel_bytes(
 ) -> bytes:
     import pandas as pd
 
-    voc_cols = [
-        "id",
-        "source",
-        "bucket",
-        "query_source",
-        "market",
-        "query_lang",
-        "channel",
-        "content_type",
-        "title",
-        "text",
-        "url",
-        "query",
-    ]
+    voc_cols = ["id", "source", "market", "query_lang", "channel", "content_type", "title", "text", "url", "query"]
     paste_rows = []
     for i, item in enumerate(pasted.get("items") or [], start=1):
         paste_rows.append(
             {
                 "id": i,
                 "source": "paste",
-                "bucket": "voc",
-                "query_source": "paste",
                 "market": "",
                 "query_lang": "",
                 "channel": item.get("channel") or "",
@@ -986,8 +940,6 @@ def build_voc_excel_bytes(
             {
                 "id": i,
                 "source": "web_search",
-                "bucket": hit.get("bucket") or "",
-                "query_source": hit.get("query_source") or "",
                 "market": hit.get("market") or "",
                 "query_lang": hit.get("query_lang") or "",
                 "channel": hit.get("platform") or "",
@@ -1004,8 +956,6 @@ def build_voc_excel_bytes(
             {
                 "id": i,
                 "source": hit.get("purpose") or "tech_search",
-                "bucket": hit.get("bucket") or "",
-                "query_source": hit.get("purpose") or "tech_search",
                 "market": hit.get("market") or "",
                 "query_lang": hit.get("query_lang") or "",
                 "channel": hit.get("platform") or "",
@@ -1040,11 +990,6 @@ def build_voc_excel_bytes(
         key = "info_channels_zh" if lang == "zh" else "info_channels_en"
         for ch in profile.get(key) or []:
             channel_rows.append({"market": market, "information_channel": ch})
-    plan = search_payload.get("channel_plan") or {}
-    for site in plan.get("sites") or []:
-        channel_rows.append({"market": "user_channel", "information_channel": f"site:{site} (priority)"})
-    for kw in plan.get("keywords") or []:
-        channel_rows.append({"market": "user_channel", "information_channel": kw})
 
     method = {
         "item": [
@@ -1062,7 +1007,7 @@ def build_voc_excel_bytes(
         ],
         "value": [
             "P=0.3F+0.3S+0.2U+0.2W",
-            "F=1-10 advisor from this-run hits that mention the pain; n=hit count, not 0.3*n; typed pains are hypotheses",
+            "Frequency 1-10",
             "Severity 1-10",
             "Unmet need 1-10",
             "Willingness to pay 1-10",
@@ -1141,8 +1086,6 @@ def render_innovation_app(*, embedded: bool = False) -> None:
         st.markdown("---")
         st.markdown(f"## {t['sidebar_title']}")
         st.markdown(t["sidebar_how"])
-        st.markdown(t["sidebar_suw"])
-        st.markdown(t["sidebar_index"])
         st.markdown("---")
         analyst_name = st.text_input(t["analyst_name_label"], placeholder=t["analyst_name_ph"], key="inn_analyst_name")
         analyst_title = st.text_input(t["analyst_title_label"], placeholder=t["analyst_title_ph"], key="inn_analyst_title")
@@ -1197,14 +1140,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
     with col2:
         st.markdown(f"#### {t['market_channel']}")
         channel_status = st.selectbox(t["channel_status"], options=t["channel_options"], key="inn_channel_status")
-        channel_detail = st.text_area(
-            t["channel_detail"],
-            placeholder=t["channel_detail_ph"],
-            height=80,
-            key="inn_channel_detail",
-            help=t.get("channel_detail_help", ""),
-        )
-        st.caption(t.get("channel_detail_help", ""))
+        channel_detail = st.text_area(t["channel_detail"], placeholder=t["channel_detail_ph"], height=80, key="inn_channel_detail")
         brand_status = st.selectbox(t["brand_status"], options=t["brand_options"], key="inn_brand_status")
 
     col_pain, col_tech_in = st.columns(2)
@@ -1275,7 +1211,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                     if analyst_name:
                         analyst_info = f"{analyst_name} ({analyst_title})" if analyst_title else analyst_name
                     else:
-                        analyst_info = "创新评估" if lang == "zh" else "Innovation Assessment"
+                        analyst_info = "创新分析师" if lang == "zh" else "Innovation analyst"
 
                     user_pain_items = split_user_items(user_pains_raw)
                     user_tech_items = split_user_items(user_tech_raw)
@@ -1303,27 +1239,14 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                             existing.add(item.lower())
                     progress.progress(20, text=t["progress_search"])
                     search_payload = search_all_markets(
-                        markets,
-                        product_zh,
-                        product_en,
-                        extra_terms=user_pain_items,
-                        channel_detail=channel_detail or "",
+                        markets, product_zh, product_en, extra_terms=user_pain_items
                     )
                     progress.progress(40, text=t["progress_search"])
                     tech_payload = search_patents_and_competitors(product_zh, product_en, claims)
                     voc_block = voc_block_for_prompt(parsed_voc, lang)
                     search_block = format_search_block(search_payload, lang)
                     tech_block = format_tech_block(tech_payload, claims, lang)
-                    voc_n_for_f = int(
-                        search_payload["voc_n"]
-                        if search_payload.get("voc_n") is not None
-                        else sum(
-                            1
-                            for hit in (search_payload.get("hits") or [])
-                            if (hit.get("bucket") or "") == "voc"
-                        )
-                    )
-                    channel_guide = format_channel_guide(markets, lang, channel_detail or "")
+                    channel_guide = format_channel_guide(markets, lang)
                     template = REPORT_PROMPT_ZH if lang == "zh" else REPORT_PROMPT_EN
                     missing = "未提供" if lang == "zh" else "Not provided"
                     pains_text = format_numbered_items(user_pain_items, missing)
@@ -1348,17 +1271,13 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                             additional_info=additional_info or missing,
                             voc_n=parsed_voc["n"],
                             search_n=search_payload.get("n", 0),
-                            voc_n_for_f=voc_n_for_f,
                             voc_channel_counts=json.dumps(parsed_voc["by_channel"], ensure_ascii=False),
                             pain_threshold=pain_threshold,
                             top_n=int(top_n),
                         )
                         .replace("<<<VOC_BLOCK>>>", voc_block)
                         .replace("<<<SEARCH_BLOCK>>>", search_block)
-                        .replace(
-                            "<<<SCORE_RUBRIC>>>",
-                            score_rubric_markdown(lang, voc_n_for_f),
-                        )
+                        .replace("<<<SCORE_RUBRIC>>>", score_rubric_markdown(lang, int(search_payload.get("n") or 0)))
                         .replace("<<<TECH_BLOCK>>>", tech_block)
                         .replace("<<<CHANNEL_GUIDE>>>", channel_guide)
                     )
@@ -1394,20 +1313,15 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         search_n=int(search_payload.get("n") or 0),
                         pain_threshold=float(pain_threshold),
                         top_n=int(top_n),
-                        voc_n_for_f=voc_n_for_f,
                     )
                     method = scoring_method_markdown(
-                        lang,
-                        float(pain_threshold),
-                        int(top_n),
-                        voc_n_for_f,
+                        lang, float(pain_threshold), int(top_n), int(search_payload.get("n") or 0)
                     )
                     report = header + "\n---\n\n" + body.lstrip()
                     st.session_state.innovation_report = report
                     st.session_state.innovation_report_lang = lang
                     st.session_state.innovation_product_name = product_name
                     st.session_state.innovation_search_n = search_payload.get("n", 0)
-                    st.session_state.innovation_voc_n = voc_n_for_f
                     st.session_state.innovation_method = method
                     st.session_state.innovation_voc_excel = build_voc_excel_bytes(
                         lang=lang,
@@ -1418,11 +1332,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                         user_pains=user_pain_items,
                         user_tech=user_tech_items,
                         markets=markets,
-                        meta={
-                            "pain_threshold": float(pain_threshold),
-                            "top_n": int(top_n),
-                            "voc_n_for_f": voc_n_for_f,
-                        },
+                        meta={"pain_threshold": float(pain_threshold), "top_n": int(top_n)},
                     )
                     progress.progress(100, text=t["generating"])
                     progress_slot.empty()
@@ -1440,13 +1350,10 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                 else "This report was written in the UI language at generation time. Re-run analysis after switching Chinese/English."
             )
         search_n = st.session_state.get("innovation_search_n")
-        voc_n_shown = st.session_state.get("innovation_voc_n")
         if search_n is not None:
-            if lang == "zh":
-                cap = f"网页检索 {search_n} 条；其中 VOC {voc_n_shown if voc_n_shown is not None else search_n} 条。痛点 n=本页提到该痛点的条数（含专利/竞品）；F 为顾问分，不等于 n。"
-            else:
-                cap = f"Web hits {search_n}; VOC {voc_n_shown if voc_n_shown is not None else search_n}. Pain n=rows mentioning the pain (incl. patents/competitors); F is advisor score, not n."
-            st.caption(cap)
+            st.caption(
+                f"网页检索命中 {search_n} 条（中文+英文，按市场）" if lang == "zh" else f"Web VOC hits: {search_n} (Chinese + English, by market)"
+            )
         st.markdown("---")
         st.markdown(report)
         method = st.session_state.get("innovation_method") or ""
@@ -1467,7 +1374,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
                 st.download_button(
                     t["download_btn"],
                     data=buf,
-                    file_name=f"{safe_name}_Innovation_Assessment.docx",
+                    file_name=f"{safe_name}_Innovation_Analysis.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key="inn_dl_docx",
                     use_container_width=True,
@@ -1497,7 +1404,7 @@ def render_innovation_app(*, embedded: bool = False) -> None:
 def run_standalone() -> None:
     """Standalone Streamlit Cloud entry, same SSO pattern as Product Feasibility."""
     try:
-        st.set_page_config(page_title="Innovation Assessment System", page_icon="🔹", layout="wide")
+        st.set_page_config(page_title="Innovation Analysis System", page_icon="🔹", layout="wide")
     except Exception:
         pass
     from subscription_utils import require_portal_user

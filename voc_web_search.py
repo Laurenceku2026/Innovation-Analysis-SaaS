@@ -304,16 +304,8 @@ def _content_type(platform: str, title: str, snippet: str) -> str:
     return "Web mention"
 
 
-def _pack_ddg_item(item: Dict[str, str]) -> Dict[str, str]:
-    return {
-        "title": (item.get("title") or "").strip(),
-        "snippet": (item.get("body") or item.get("description") or "").strip(),
-        "url": (item.get("href") or item.get("url") or "").strip(),
-    }
-
-
 def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str]]:
-    """Same queries as the first report; try several engines if DuckDuckGo DNS fails on Cloud."""
+    """First-report queries; Bing/Brave if DuckDuckGo DNS fails on Streamlit Cloud."""
     try:
         try:
             from ddgs import DDGS
@@ -323,11 +315,14 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
         raise RuntimeError("missing_ddgs") from exc
 
     last_exc: Optional[Exception] = None
-    backends: List[Optional[str]] = [None, "bing", "brave"]
-    for backend in backends:
+    for backend in (None, "bing", "brave"):
         try:
             rows: List[Dict[str, str]] = []
-            with DDGS() as client:
+            try:
+                client_cm = DDGS(timeout=12)
+            except TypeError:
+                client_cm = DDGS()
+            with client_cm as client:
                 kwargs: Dict[str, Any] = {
                     "region": region,
                     "max_results": max_results,
@@ -335,30 +330,25 @@ def _ddg_search(query: str, region: str, max_results: int) -> List[Dict[str, str
                 }
                 if backend:
                     kwargs["backend"] = backend
-                for item in client.text(query, **kwargs):
-                    packed = _pack_ddg_item(item)
-                    if packed.get("url") or packed.get("title"):
-                        rows.append(packed)
+                try:
+                    items = client.text(query, **kwargs)
+                except TypeError:
+                    items = client.text(
+                        query, region=region, max_results=max_results, safesearch="moderate"
+                    )
+                for item in items:
+                    rows.append(
+                        {
+                            "title": (item.get("title") or "").strip(),
+                            "snippet": (item.get("body") or item.get("description") or "").strip(),
+                            "url": (item.get("href") or item.get("url") or "").strip(),
+                        }
+                    )
             if rows:
                 return rows
-        except TypeError:
-            try:
-                rows = []
-                with DDGS() as client:
-                    for item in client.text(
-                        query, region=region, max_results=max_results, safesearch="moderate"
-                    ):
-                        packed = _pack_ddg_item(item)
-                        if packed.get("url") or packed.get("title"):
-                            rows.append(packed)
-                return rows
-            except Exception as exc:
-                last_exc = exc
-                continue
         except Exception as exc:
             last_exc = exc
-            msg = str(exc).lower()
-            if "no result" in msg:
+            if "no result" in str(exc).lower():
                 continue
             continue
     if last_exc:
@@ -422,9 +412,7 @@ def search_all_markets(
     product_zh: str,
     product_en: str,
     extra_terms: Optional[List[str]] = None,
-    channel_detail: str = "",
 ) -> Dict[str, Any]:
-    _ = channel_detail
     all_hits: List[Dict[str, str]] = []
     all_errors: List[str] = []
     by_market: Dict[str, List[Dict[str, str]]] = {}
@@ -442,11 +430,9 @@ def search_all_markets(
         all_errors.extend(errors)
     return {
         "n": len(all_hits),
-        "voc_n": len(all_hits),
         "hits": all_hits,
         "by_market": by_market,
         "errors": all_errors,
-        "channel_plan": {"sites": [], "keywords": []},
     }
 
 
@@ -615,8 +601,7 @@ def extract_json_object(text: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def format_channel_guide(markets: List[str], lang: str, channel_detail: str = "") -> str:
-    _ = channel_detail
+def format_channel_guide(markets: List[str], lang: str) -> str:
     lines = []
     if lang == "zh":
         lines.append("【信息获取渠道清单——必须按市场尽量列全，下列为最低覆盖，可再补充同类渠道】")
